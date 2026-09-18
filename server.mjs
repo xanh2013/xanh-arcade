@@ -7,6 +7,9 @@ const files={'/so-do':['so-do.svg','image/svg+xml'],'/so-do.svg':['so-do.svg','i
 for(const game of ['runner','blocks','caro','chess']) files['/cover-'+game+'-v2.webp']=['cover-'+game+'-v2.webp','image/webp'];
 for(const name of ['game-rules.js','games.js'])files['/'+name]=[name,'text/javascript; charset=utf-8'];
 for(const name of ['runner','space'])files['/background-'+name+'-v2.webp']=['background-'+name+'-v2.webp','image/webp'];
+for(const f of ['battle.js','battle-engine.js','beta-shop.js'])files['/'+f]=[f,'text/javascript; charset=utf-8'];
+for(const f of ['battle.css','shop.css'])files['/'+f]=[f,'text/css; charset=utf-8'];
+files['/battle']=['battle.html','text/html; charset=utf-8'];files['/shop']=['shop.html','text/html; charset=utf-8'];
 const games=new Set(['caro','chess','runner','blocks']);
 function send(res,status,data){res.writeHead(status,{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store'});res.end(JSON.stringify(data));}
 function roomView(r){return {code:r.code,title:r.title,game:r.game,match:r.match?{board:r.match.board,turn:r.match.turn,status:r.match.status,winner:r.match.winner,line:r.match.line,last:r.match.last}:null,members:[...r.members].map(id=>{const s=sessions.get(id);return {name:s?.name||'Người chơi',ready:s?.ready||false,host:r.host===id,role:r.match?.players.indexOf(id)===0?'X':r.match?.players.indexOf(id)===1?'O':null};})};}

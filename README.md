@@ -37,3 +37,9 @@ Use one instance: rooms and matches are in memory and reset on server restart. S
 Google Drive folder requested by Xanh: `1GA0XDxvuOaL4453jnQ0YnQ_SHaaMseZS`. Upload was rejected with `insufficientParentPermissions`; no Drive upload is claimed. Runtime images are served with the app and do not depend on Drive permissions.
 
 `so-do.svg` is the updated project diagram. The external Canva design has not been edited because its editing permission was unavailable.
+
+## Xanh Battle — BETA 0.1
+
+`/battle` is an original top-down 2D survival shooter. Three classes, 8 bots that fight each other, cover and projectile collision, shrinking zone, dash/shield/pulse abilities, reloads, medkits, armor, kill-based leveling, pause, sound toggle, minimap and dual touch controls. Single-player only; no online PvP yet. WASD/arrows move, mouse aims and fires, Space dash, Q shield, E pulse, R reload, P pause.
+
+`/shop` is a clearly labeled local beta economy: 300 starting coins, 75 daily coins, 15 per Battle kill and 30 for winning (max150 per match). Six cosmetic items can be purchased/equipped and used in Battle, Runner, Breakout and Caro. Data lives in localStorage, may be modified by the local user, is not authoritative, and is not synced with accounts. No real-money purchases. Clearing browser data loses the save. Account/Supabase integration remains separate unfinished work and is not deployed with this beta.

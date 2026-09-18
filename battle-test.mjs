@@ -1,0 +1,10 @@
+import assert from 'node:assert/strict';
+import {createWorld,stepWorld,ability,blocked,moveActor,lineClear} from './battle-engine.js';
+const w=createWorld('scout',()=>.5);assert.equal(w.actors.length,9);assert.equal(w.player.maxHp,115);assert.equal(blocked(300,320),true);assert.equal(lineClear({x:200,y:325},{x:500,y:325}),false);
+let a={x:240,y:330,r:17};moveActor(a,10,0);assert.equal(a.x,240);
+assert.equal(ability(w,'shield'),true);assert.equal(ability(w,'shield'),false);assert.equal(ability(w,'dash'),true);assert.equal(ability(w,'dash'),false);
+const shot=createWorld('ranger',()=>.5);shot.actors.slice(2).forEach(a=>a.alive=false);Object.assign(shot.actors[1],{x:1030,y:900,speed:0,cool:99});for(let i=0;i<170&&shot.status==='playing';i++)stepWorld(shot,.016,{angle:0,fire:true});assert.equal(shot.status,'won');assert.equal(shot.player.kills,1);
+const zone=createWorld();zone.player.x=20;zone.player.y=20;zone.time=190;for(let i=0;i<600&&zone.status==='playing';i++)stepWorld(zone,.04,{});assert.equal(zone.status,'lost');
+const sim=createWorld();for(let i=0;i<10000&&sim.status==='playing';i++)stepWorld(sim,.02,{});assert.ok(['won','lost'].includes(sim.status));assert.ok(sim.bullets.length<100);
+let data={};globalThis.localStorage={getItem:k=>data[k]||null,setItem:(k,v)=>data[k]=v};const shop=await import('./beta-shop.js');assert.equal(shop.getSave().coins,300);shop.purchase('battle-cobalt');assert.equal(shop.getSave().coins,150);shop.purchase('battle-cobalt');assert.equal(shop.getSave().coins,150);assert.throws(()=>shop.purchase('battle-ember'));shop.equip('battle-cobalt');assert.equal(shop.getSave().equipped.battle,'battle-cobalt');shop.equip('battle-cobalt');assert.equal(shop.getSave().equipped.battle,undefined);assert.throws(()=>shop.equip('battle-ember'));shop.claimDaily();assert.equal(shop.getSave().coins,225);assert.throws(()=>shop.claimDaily());assert.equal(shop.awardBattle(8,true),150);assert.equal(shop.getSave().coins,375);
+console.log('PASS: collision, cover, cooldowns, bullets/kill/victory, zone death, bot simulation, purchase balance, duplicate purchase, insufficient coins, equip ownership, daily rewards, match rewards.');

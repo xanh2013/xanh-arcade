@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "start": "node server.mjs",
-    "check": "node --check server.mjs && node --check app.js && node --check games.js && node --check game-rules.js"
+    "check": "node --check server.mjs && node --check app.js && node --check games.js && node --check game-rules.js && node --check battle-engine.js && node --check battle.js && node --check beta-shop.js"
   },
   "engines": {
     "node": ">=22"
