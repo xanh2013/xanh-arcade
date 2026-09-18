@@ -1,4 +1,6 @@
 import http from 'node:http';
+import {createAccounts,AccountError} from './accounts.mjs';
+const accounts=createAccounts(),authRates=new Map();
 import {winningLine} from './game-rules.js';
 import {readFile} from 'node:fs/promises';
 import {randomUUID,randomBytes} from 'node:crypto';
@@ -10,6 +12,9 @@ for(const name of ['runner','space'])files['/background-'+name+'-v2.webp']=['bac
 for(const f of ['battle.js','battle-engine.js','beta-shop.js'])files['/'+f]=[f,'text/javascript; charset=utf-8'];
 for(const f of ['battle.css','shop.css'])files['/'+f]=[f,'text/css; charset=utf-8'];
 files['/battle']=['battle.html','text/html; charset=utf-8'];files['/shop']=['shop.html','text/html; charset=utf-8'];
+files['/account']=['account.html','text/html; charset=utf-8'];
+files['/account.js']=['account.js','text/javascript; charset=utf-8'];
+files['/account.css']=['account.css','text/css; charset=utf-8'];
 const games=new Set(['caro','chess','runner','blocks']);
 function send(res,status,data){res.writeHead(status,{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store'});res.end(JSON.stringify(data));}
 function roomView(r){return {code:r.code,title:r.title,game:r.game,match:r.match?{board:r.match.board,turn:r.match.turn,status:r.match.status,winner:r.match.winner,line:r.match.line,last:r.match.last}:null,members:[...r.members].map(id=>{const s=sessions.get(id);return {name:s?.name||'Người chơi',ready:s?.ready||false,host:r.host===id,role:r.match?.players.indexOf(id)===0?'X':r.match?.players.indexOf(id)===1?'O':null};})};}
@@ -20,9 +25,19 @@ const server=http.createServer(async(req,res)=>{try{
 res.setHeader('X-Content-Type-Options','nosniff');res.setHeader('Referrer-Policy','same-origin');res.setHeader('X-Frame-Options','DENY');res.setHeader('Content-Security-Policy',"default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; base-uri 'none'; frame-ancestors 'none'");
 const path=new URL(req.url,'http://localhost').pathname;
 if(req.method==='GET'&&files[path]){const [file,type]=files[path];res.writeHead(200,{'Content-Type':type,'Cache-Control':'no-cache'});res.end(await readFile(new URL(file,import.meta.url)));return;}
-if(path==='/health'){send(res,200,{ok:true,version:'2.0.0'});return;}
+if(path==='/health'){send(res,200,{ok:true,version:'2.1.0-beta'});return;}
 if(!path.startsWith('/api/')){send(res,404,{error:'Không tìm thấy trang.'});return;}
 if(req.method==='POST'&&(!req.headers.origin||new URL(req.headers.origin).host!==req.headers.host)){send(res,403,{error:'Yêu cầu không hợp lệ.'});return;}
+if(/^\/api\/(auth|shop)\//.test(path)){
+ const action=path.slice(5),read=['auth/me','shop/catalog'].includes(action);
+ if(req.method!==(read?'GET':'POST')){send(res,405,{error:'Phương thức không được hỗ trợ.'});return;}
+ const addr=req.socket.remoteAddress||'unknown',now=Date.now();
+ for(const [k,v] of authRates)if(now-v.at>60000)authRates.delete(k);
+ const rate=authRates.get(addr)||{at:now,n:0};authRates.set(addr,rate);
+ if(++rate.n>100){send(res,429,{error:'Thao tác quá nhanh. Chờ một phút rồi thử lại.'});return;}
+ let raw='',data={};if(!read){for await(const chunk of req){raw+=chunk;if(raw.length>4096){send(res,413,{error:'Nội dung quá dài.'});return;}}try{data=JSON.parse(raw||'{}');}catch{send(res,400,{error:'Dữ liệu không hợp lệ.'});return;}if(!data||typeof data!=='object'||Array.isArray(data)){send(res,400,{error:'Dữ liệu không hợp lệ.'});return;}}
+ try{send(res,200,await accounts.handle(action,data,req,res));}catch(e){if(e instanceof AccountError){send(res,e.status,{error:e.message});return;}throw e;}return;
+}
 const cookie=/(?:^|;\s*)xa_session=([^;]+)/.exec(req.headers.cookie||'')?.[1];let s=sessions.get(cookie);
 if(!s){if(sessions.size>=1500){send(res,503,{error:'Sảnh đang đầy, bạn thử lại sau nhé.'});return;}const id=randomUUID();s={id,name:'Người chơi '+randomBytes(2).toString('hex').toUpperCase(),room:null,ready:false,streams:new Set(),last:Date.now()};sessions.set(id,s);res.setHeader('Set-Cookie','xa_session='+id+'; HttpOnly; SameSite=Lax; Path=/; Max-Age=86400'+(process.env.RENDER?'; Secure':''));}
 s.last=Date.now();

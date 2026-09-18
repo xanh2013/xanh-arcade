@@ -43,3 +43,11 @@ Google Drive folder requested by Xanh: `1GA0XDxvuOaL4453jnQ0YnQ_SHaaMseZS`. Uplo
 `/battle` is an original top-down 2D survival shooter. Three classes, 8 bots that fight each other, cover and projectile collision, shrinking zone, dash/shield/pulse abilities, reloads, medkits, armor, kill-based leveling, pause, sound toggle, minimap and dual touch controls. Single-player only; no online PvP yet. WASD/arrows move, mouse aims and fires, Space dash, Q shield, E pulse, R reload, P pause.
 
 `/shop` is a clearly labeled local beta economy: 300 starting coins, 75 daily coins, 15 per Battle kill and 30 for winning (max150 per match). Six cosmetic items can be purchased/equipped and used in Battle, Runner, Breakout and Caro. Data lives in localStorage, may be modified by the local user, is not authoritative, and is not synced with accounts. No real-money purchases. Clearing browser data loses the save. Account/Supabase integration remains separate unfinished work and is not deployed with this beta.
+
+## Account beta setup (not activated yet)
+
+Routes: `/account` for email signup/login/profile and cloud cosmetics; `/battle` for the shooter. Configure `SUPABASE_URL` and `SUPABASE_PUBLISHABLE_KEY` on Render after provisioning a dedicated project and executing `database/setup.sql`. Never commit credentials. Configure Supabase Auth Site URL as the live website and enable email confirmation; production signup requires an appropriate SMTP configuration. No service-role key is required.
+
+Authentication uses HttpOnly cookies, provider-validated users, origin checks, bounded bodies and rate limiting. Profiles/inventory have owner-only RLS; currency changes use guarded private functions. Email identifies the account; nicknames are display names, not unique login IDs. Battle currently awards guest browser coins, not cloud currency. Guest balances are never imported as trusted money. Cloud equipment takes priority after account lookup. Password recovery and multiplayer Battle are not implemented.
+
+Run `npm test`. Account tests use a mock provider; live signup, email delivery and database policies must be verified after provisioning before announcing accounts as active.
