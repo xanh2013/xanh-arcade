@@ -1,0 +1,69 @@
+{
+  "version": 2,
+  "style": "Detailed cinematic gaming, charcoal, navy, ivory and copper. No neon frames.",
+  "driveFolderId": "1GA0XDxvuOaL4453jnQ0YnQ_SHaaMseZS",
+  "driveSync": "blocked: insufficientParentPermissions; no images have been uploaded to Drive",
+  "assets": [
+    {
+      "id": "background-runner-v2",
+      "file": "background-runner-v2.webp",
+      "mimeType": "image/webp",
+      "bytes": 198132,
+      "source": "Original generated artwork using built-in image generation",
+      "driveFileId": null
+    },
+    {
+      "id": "background-space-v2",
+      "file": "background-space-v2.webp",
+      "mimeType": "image/webp",
+      "bytes": 123690,
+      "source": "Original generated artwork using built-in image generation",
+      "driveFileId": null
+    },
+    {
+      "id": "cover-blocks-v2",
+      "file": "cover-blocks-v2.webp",
+      "mimeType": "image/webp",
+      "bytes": 214764,
+      "source": "Original generated artwork using built-in image generation",
+      "driveFileId": null
+    },
+    {
+      "id": "cover-caro-v2",
+      "file": "cover-caro-v2.webp",
+      "mimeType": "image/webp",
+      "bytes": 192890,
+      "source": "Original generated artwork using built-in image generation",
+      "driveFileId": null
+    },
+    {
+      "id": "cover-chess-v2",
+      "file": "cover-chess-v2.webp",
+      "mimeType": "image/webp",
+      "bytes": 198664,
+      "source": "Original generated artwork using built-in image generation",
+      "driveFileId": null
+    },
+    {
+      "id": "cover-runner-v2",
+      "file": "cover-runner-v2.webp",
+      "mimeType": "image/webp",
+      "bytes": 270374,
+      "source": "Original generated artwork using built-in image generation",
+      "driveFileId": null
+    }
+  ],
+  "audio": {
+    "type": "Web Audio synthesis",
+    "effects": [
+      "jump",
+      "coin",
+      "paddle",
+      "brick",
+      "lose life",
+      "win",
+      "place stone"
+    ],
+    "enabledByDefault": false
+  }
+}
