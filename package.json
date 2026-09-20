@@ -1,11 +1,11 @@
 {
   "name": "xanh-arcade",
-  "version": "2.2.0-beta",
+  "version": "2.3.0-beta",
   "private": true,
   "type": "module",
   "scripts": {
     "start": "node server.mjs",
-    "check": "node --check server.mjs && node --check app.js && node --check games.js && node --check game-rules.js && node --check battle-engine.js && node --check battle.js && node --check beta-shop.js && node --check accounts.mjs && node --check account.js",
+    "check": "node --check server.mjs && node --check app.js && node --check games.js && node --check game-rules.js && node --check battle-engine.js && node --check battle-settings.js && node --check battle.js && node --check beta-shop.js && node --check accounts.mjs && node --check account.js",
     "test": "node test.mjs && node battle-test.mjs && node account-test.mjs"
   },
   "engines": {

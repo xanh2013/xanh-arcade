@@ -38,7 +38,7 @@ Google Drive folder requested by Xanh: `1GA0XDxvuOaL4453jnQ0YnQ_SHaaMseZS`. Uplo
 
 `so-do.svg` is the updated project diagram. The external Canva design has not been edited because its editing permission was unavailable.
 
-## Xanh Battle — BETA 0.2
+## Xanh Battle — BETA 0.3
 
 `/battle` is an original top-down 2D survival shooter. Three classes, 24 bots that fight each other, cover and projectile collision, shrinking zone, dash/shield/pulse abilities, reloads, medkits, armor, kill-based leveling, pause, sound toggle, minimap and dual touch controls. Single-player only; no online PvP yet. WASD/arrows move, mouse aims and fires, Space dash, Q shield, E pulse, R reload, P pause.
 
@@ -53,7 +53,7 @@ Authentication uses HttpOnly cookies, provider-validated users, origin checks, b
 Run `npm test`. Account tests use a mock provider; live signup, email delivery and database policies must be verified after provisioning before announcing accounts as active.
 
 
-## Battle BETA 0.2 — Thanh Van Island
+## Battle BETA 0.3 — Thanh Van Island
 - 4,800 × 4,800 map (7.1× previous area), nine named districts, original procedural 2D art.
 - Plane route, manual J/touch jump, steerable parachute, 24 bots.
 - Five weapons, finite ammo, two slots (1/2), F/touch pickup, B backpack, H healing. Full weapon slots replace the active gun and drop it on the ground.
@@ -65,3 +65,12 @@ Run `npm test`. Account tests use a mock provider; live signup, email delivery a
 
 ### Hosted account setup (2026-09-20)
 Supabase project rclvffhlscuuptpmhiej (Singapore) now has the xa_* tables and RLS. Render has SUPABASE_URL and its public publishable key configured. Transactional live-database checks passed for wallet, duplicate purchases, ownership, daily limits and cross-user isolation. Public email signup is not production-ready until custom SMTP and the Auth Site URL are configured. Default SMTP only sends to organization team addresses. Do not disable confirmation to disguise this limitation.
+
+
+## Battle BETA 0.3
+- Original top-down survival island: 16,000 × 16,000 world units, 9 districts and 24 bots. Not a real-world distance measurement.
+- 25-second flight, 18-second parachute descent, slower ground speed, 220–260 HP, reduced weapon damage and temporary landing protection (firing removes it).
+- Three difficulty levels control bot damage, aim spread, reaction delay and fire cadence.
+- G deploys a destructible 55-second glue wall; V enters/exits nearby vehicles. Vehicles have collision, health and finite fuel. Two gun slots, sniper rifle, supplies and five shrinking-zone phases.
+- Full island overview, remappable keyboard controls, local top-20 results (50 retained), difficulty filter. Rankings are device-only and untrusted; they are not an online competitive leaderboard.
+- Account backend is connected, but external signup requires configuring custom SMTP and verifying Supabase Auth redirect settings with the project owner's account.

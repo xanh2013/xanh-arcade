@@ -9,7 +9,7 @@ const files={'/so-do':['so-do.svg','image/svg+xml'],'/so-do.svg':['so-do.svg','i
 for(const game of ['runner','blocks','caro','chess']) files['/cover-'+game+'-v2.webp']=['cover-'+game+'-v2.webp','image/webp'];
 for(const name of ['game-rules.js','games.js'])files['/'+name]=[name,'text/javascript; charset=utf-8'];
 for(const name of ['runner','space'])files['/background-'+name+'-v2.webp']=['background-'+name+'-v2.webp','image/webp'];
-for(const f of ['battle.js','battle-engine.js','beta-shop.js'])files['/'+f]=[f,'text/javascript; charset=utf-8'];
+for(const f of ['battle.js','battle-engine.js','battle-settings.js','beta-shop.js'])files['/'+f]=[f,'text/javascript; charset=utf-8'];
 for(const f of ['battle.css','shop.css'])files['/'+f]=[f,'text/css; charset=utf-8'];
 files['/battle']=['battle.html','text/html; charset=utf-8'];files['/shop']=['shop.html','text/html; charset=utf-8'];
 files['/account']=['account.html','text/html; charset=utf-8'];
@@ -25,7 +25,7 @@ const server=http.createServer(async(req,res)=>{try{
 res.setHeader('X-Content-Type-Options','nosniff');res.setHeader('Referrer-Policy','same-origin');res.setHeader('X-Frame-Options','DENY');res.setHeader('Content-Security-Policy',"default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; base-uri 'none'; frame-ancestors 'none'");
 const path=new URL(req.url,'http://localhost').pathname;
 if(req.method==='GET'&&files[path]){const [file,type]=files[path];res.writeHead(200,{'Content-Type':type,'Cache-Control':'no-cache'});res.end(await readFile(new URL(file,import.meta.url)));return;}
-if(path==='/health'){send(res,200,{ok:true,version:'2.2.0-beta'});return;}
+if(path==='/health'){send(res,200,{ok:true,version:'2.3.0-beta'});return;}
 if(!path.startsWith('/api/')){send(res,404,{error:'Không tìm thấy trang.'});return;}
 if(req.method==='POST'&&(!req.headers.origin||new URL(req.headers.origin).host!==req.headers.host)){send(res,403,{error:'Yêu cầu không hợp lệ.'});return;}
 if(/^\/api\/(auth|shop)\//.test(path)){
