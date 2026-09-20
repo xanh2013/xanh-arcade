@@ -61,3 +61,7 @@ Run `npm test`. Account tests use a mock provider; live signup, email delivery a
 - Terrain pattern cached; off-camera art culled; bot planning staggered; HUD updates at 10Hz.
 - Single player BETA. Accounts still require a configured Supabase project and database/setup.sql. No plaintext-password or temporary-server-file account fallback.
 - npm test covers landing, ammunition conservation, inventory, bot lethality, cover/pathfinding, and existing account/shop/caro regressions.
+
+
+### Hosted account setup (2026-09-20)
+Supabase project rclvffhlscuuptpmhiej (Singapore) now has the xa_* tables and RLS. Render has SUPABASE_URL and its public publishable key configured. Transactional live-database checks passed for wallet, duplicate purchases, ownership, daily limits and cross-user isolation. Public email signup is not production-ready until custom SMTP and the Auth Site URL are configured. Default SMTP only sends to organization team addresses. Do not disable confirmation to disguise this limitation.

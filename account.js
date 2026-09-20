@@ -1,3 +1,5 @@
+// Confirmation links may return tokens in the fragment. Login uses server cookies; never persist these tokens.
+const confirmationReturned=location.hash.includes('access_token=');if(location.hash)history.replaceState(null,'',location.pathname+location.search);
 const $=s=>document.querySelector(s);let mode='login',account=null,catalog=[];
 async function api(path,data){const r=await fetch('/api/'+path,{method:data?'POST':'GET',headers:data?{'Content-Type':'application/json'}:{},...(data?{body:JSON.stringify(data)}:{})});let result;try{result=await r.json();}catch{throw Error('Không đọc được phản hồi. Thử tải lại trang nhé.');}if(!r.ok)throw Error(result.error||'Không kết nối được tài khoản.');return result;}
 function status(t){$('#status').textContent=t;}
@@ -8,4 +10,4 @@ $('#auth-form').onsubmit=e=>{e.preventDefault();const f=e.currentTarget;run(f.qu
 $('#logout').onclick=e=>run(e.currentTarget,async()=>{await api('auth/logout',{});account=null;render();status('Đã đăng xuất.');});
 $('#daily').onclick=e=>run(e.currentTarget,async()=>{account=(await api('shop/daily',{})).account;render();status('Đã nhận 75 xu vào tài khoản.');});
 $('#rename').onsubmit=e=>{e.preventDefault();const f=e.currentTarget;run(f.querySelector('button'),async()=>{account=(await api('auth/profile',{nickname:f.elements.nickname.value})).account;render();status('Đã lưu biệt danh.');});};
-try{const me=await api('auth/me');if(!me.configured){status('Tạo nick đang chờ kích hoạt máy chủ. Bạn vẫn có thể chơi Battle BETA và dùng shop chơi khách.');}else{catalog=(await api('shop/catalog')).catalog;account=me.account;render();status(account?'Nick đã được kết nối.':'Đăng nhập hoặc tạo nick để lưu hồ sơ và đồ trực tuyến.');}}catch(e){status(e.message);}
+try{const me=await api('auth/me');if(!me.configured){status('Tạo nick đang chờ kích hoạt máy chủ. Bạn vẫn có thể chơi Battle BETA và dùng shop chơi khách.');}else{catalog=(await api('shop/catalog')).catalog;account=me.account;render();status(account?'Nick đã được kết nối.':confirmationReturned?'Email đã được xác nhận. Đăng nhập để vào nick.':'Đăng nhập hoặc tạo nick để lưu hồ sơ và đồ trực tuyến.');}}catch(e){status(e.message);}

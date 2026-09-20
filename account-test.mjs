@@ -13,3 +13,6 @@ await auth.handle('shop/equip',{itemId:'battle-cobalt',slot:'battle'},signed,res
 await assert.rejects(auth.handle('shop/equip',{itemId:'x',slot:'admin'},signed,res),e=>e.status===400);
 await auth.handle('auth/logout',{},signed,res);assert.equal((await auth.handle('auth/me',{},signed,res)).account,null);
 console.log('PASS: unconfigured state, invalid signup, secure cookies, no token exposure, battle equipment, invalid slot, revoked logout. Mock provider only; live DB verification pending.');
+
+const smtpFail=createAccounts({url:'https://example.supabase.co',key:'test',fetchImpl:async()=>new Response(JSON.stringify({error_code:'email_address_not_authorized',msg:'Email address not authorized'}),{status:400})});
+await assert.rejects(smtpFail.handle('auth/signup',{email:'test@example.com',nickname:'Test',password:'abcdefghijk'},req,res),e=>e.message.includes('dịch vụ gửi email'));
