@@ -25,7 +25,7 @@ const server=http.createServer(async(req,res)=>{try{
 res.setHeader('X-Content-Type-Options','nosniff');res.setHeader('Referrer-Policy','same-origin');res.setHeader('X-Frame-Options','DENY');res.setHeader('Content-Security-Policy',"default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; base-uri 'none'; frame-ancestors 'none'");
 const path=new URL(req.url,'http://localhost').pathname;
 if(req.method==='GET'&&files[path]){const [file,type]=files[path];res.writeHead(200,{'Content-Type':type,'Cache-Control':'no-cache'});res.end(await readFile(new URL(file,import.meta.url)));return;}
-if(path==='/health'){send(res,200,{ok:true,version:'2.1.0-beta'});return;}
+if(path==='/health'){send(res,200,{ok:true,version:'2.2.0-beta'});return;}
 if(!path.startsWith('/api/')){send(res,404,{error:'Không tìm thấy trang.'});return;}
 if(req.method==='POST'&&(!req.headers.origin||new URL(req.headers.origin).host!==req.headers.host)){send(res,403,{error:'Yêu cầu không hợp lệ.'});return;}
 if(/^\/api\/(auth|shop)\//.test(path)){

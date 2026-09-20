@@ -38,9 +38,9 @@ Google Drive folder requested by Xanh: `1GA0XDxvuOaL4453jnQ0YnQ_SHaaMseZS`. Uplo
 
 `so-do.svg` is the updated project diagram. The external Canva design has not been edited because its editing permission was unavailable.
 
-## Xanh Battle — BETA 0.1
+## Xanh Battle — BETA 0.2
 
-`/battle` is an original top-down 2D survival shooter. Three classes, 8 bots that fight each other, cover and projectile collision, shrinking zone, dash/shield/pulse abilities, reloads, medkits, armor, kill-based leveling, pause, sound toggle, minimap and dual touch controls. Single-player only; no online PvP yet. WASD/arrows move, mouse aims and fires, Space dash, Q shield, E pulse, R reload, P pause.
+`/battle` is an original top-down 2D survival shooter. Three classes, 24 bots that fight each other, cover and projectile collision, shrinking zone, dash/shield/pulse abilities, reloads, medkits, armor, kill-based leveling, pause, sound toggle, minimap and dual touch controls. Single-player only; no online PvP yet. WASD/arrows move, mouse aims and fires, Space dash, Q shield, E pulse, R reload, P pause.
 
 `/shop` is a clearly labeled local beta economy: 300 starting coins, 75 daily coins, 15 per Battle kill and 30 for winning (max150 per match). Six cosmetic items can be purchased/equipped and used in Battle, Runner, Breakout and Caro. Data lives in localStorage, may be modified by the local user, is not authoritative, and is not synced with accounts. No real-money purchases. Clearing browser data loses the save. Account/Supabase integration remains separate unfinished work and is not deployed with this beta.
 
@@ -51,3 +51,13 @@ Routes: `/account` for email signup/login/profile and cloud cosmetics; `/battle`
 Authentication uses HttpOnly cookies, provider-validated users, origin checks, bounded bodies and rate limiting. Profiles/inventory have owner-only RLS; currency changes use guarded private functions. Email identifies the account; nicknames are display names, not unique login IDs. Battle currently awards guest browser coins, not cloud currency. Guest balances are never imported as trusted money. Cloud equipment takes priority after account lookup. Password recovery and multiplayer Battle are not implemented.
 
 Run `npm test`. Account tests use a mock provider; live signup, email delivery and database policies must be verified after provisioning before announcing accounts as active.
+
+
+## Battle BETA 0.2 — Thanh Van Island
+- 4,800 × 4,800 map (7.1× previous area), nine named districts, original procedural 2D art.
+- Plane route, manual J/touch jump, steerable parachute, 24 bots.
+- Five weapons, finite ammo, two slots (1/2), F/touch pickup, B backpack, H healing. Full weapon slots replace the active gun and drop it on the ground.
+- Bots use A* navigation, line of sight, reaction delay, velocity-leading aim, range-based weapon switching, cover while reloading/low health, loot, medkits and zone rotation. No wall penetration or instant perfect aim.
+- Terrain pattern cached; off-camera art culled; bot planning staggered; HUD updates at 10Hz.
+- Single player BETA. Accounts still require a configured Supabase project and database/setup.sql. No plaintext-password or temporary-server-file account fallback.
+- npm test covers landing, ammunition conservation, inventory, bot lethality, cover/pathfinding, and existing account/shop/caro regressions.
