@@ -1,3 +1,5 @@
+import {createShooterRooms,RoomError} from './shooter-rooms.mjs';
+const shooter=createShooterRooms();
 import http from 'node:http';
 import {createAccounts,AccountError} from './accounts.mjs';
 const accounts=createAccounts(),authRates=new Map();
@@ -21,6 +23,9 @@ files['/fortnite-z']=['fortnite.html','text/html; charset=utf-8'];
 for(const f of ['fortnite.js','fortnite-engine.js'])files['/'+f]=[f,'text/javascript; charset=utf-8'];
 files['/fortnite.css']=['fortnite.css','text/css; charset=utf-8'];
 for(const f of await readdir(new URL('fortnite-assets/',import.meta.url))){if(/^[a-zA-Z0-9_-]+\.(svg|json)$/.test(f))files['/fortnite-assets/'+f]=['fortnite-assets/'+f,f.endsWith('.svg')?'image/svg+xml':'application/json; charset=utf-8'];}
+files['/rooms']=['rooms.html','text/html; charset=utf-8'];
+for(const f of ['rooms.js','shooter-client.js'])files['/'+f]=[f,'text/javascript; charset=utf-8'];files['/rooms.css']=['rooms.css','text/css; charset=utf-8'];
+files['/online.css']=['online.css','text/css; charset=utf-8'];
 const games=new Set(['caro','chess','runner','blocks']);
 function send(res,status,data){res.writeHead(status,{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store'});res.end(JSON.stringify(data));}
 function roomView(r){return {code:r.code,title:r.title,game:r.game,match:r.match?{board:r.match.board,turn:r.match.turn,status:r.match.status,winner:r.match.winner,line:r.match.line,last:r.match.last}:null,members:[...r.members].map(id=>{const s=sessions.get(id);return {name:s?.name||'Người chơi',ready:s?.ready||false,host:r.host===id,role:r.match?.players.indexOf(id)===0?'X':r.match?.players.indexOf(id)===1?'O':null};})};}
@@ -31,7 +36,7 @@ const server=http.createServer(async(req,res)=>{try{
 res.setHeader('X-Content-Type-Options','nosniff');res.setHeader('Referrer-Policy','same-origin');res.setHeader('X-Frame-Options','DENY');res.setHeader('Content-Security-Policy',"default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; base-uri 'none'; frame-ancestors 'none'");
 const path=new URL(req.url,'http://localhost').pathname;
 if(req.method==='GET'&&files[path]){const [file,type]=files[path];let cached=staticCache.get(file);if(!cached){const raw=await readFile(new URL(file,import.meta.url));cached={raw,gzip:/text|json|svg/.test(type)&&raw.length>1024?gzipSync(raw):null};staticCache.set(file,cached);}const zipped=cached.gzip&&/\bgzip\b/.test(req.headers['accept-encoding']||'');res.writeHead(200,{'Content-Type':type,'Cache-Control':'no-cache','Vary':'Accept-Encoding',...(zipped?{'Content-Encoding':'gzip'}:{})});res.end(zipped?cached.gzip:cached.raw);return;}
-if(path==='/health'){send(res,200,{ok:true,version:'2.4.0-beta'});return;}
+if(path==='/health'){send(res,200,{ok:true,version:'2.5.0-beta'});return;}
 if(!path.startsWith('/api/')){send(res,404,{error:'Không tìm thấy trang.'});return;}
 if(req.method==='POST'&&(!req.headers.origin||new URL(req.headers.origin).host!==req.headers.host)){send(res,403,{error:'Yêu cầu không hợp lệ.'});return;}
 if(/^\/api\/(auth|shop)\//.test(path)){
@@ -47,6 +52,15 @@ if(/^\/api\/(auth|shop)\//.test(path)){
 const cookie=/(?:^|;\s*)xa_session=([^;]+)/.exec(req.headers.cookie||'')?.[1];let s=sessions.get(cookie);
 if(!s){if(sessions.size>=1500){send(res,503,{error:'Sảnh đang đầy, bạn thử lại sau nhé.'});return;}const id=randomUUID();s={id,name:'Người chơi '+randomBytes(2).toString('hex').toUpperCase(),room:null,ready:false,streams:new Set(),last:Date.now()};sessions.set(id,s);res.setHeader('Set-Cookie','xa_session='+id+'; HttpOnly; SameSite=Lax; Path=/; Max-Age=86400'+(process.env.RENDER?'; Secure':''));}
 s.last=Date.now();
+if(path.startsWith('/api/shooter/')){
+const op=path.slice('/api/shooter/'.length);try{
+if(req.method==='GET'&&op==='events'){shooter.subscribe(s,res);return;}
+if(req.method==='GET'&&op==='state'){send(res,200,shooter.command(s,'state'));return;}
+if(req.method!=='POST'){send(res,405,{error:'Phương thức không hỗ trợ.'});return;}
+let raw='';for await(const chunk of req){raw+=chunk;if(raw.length>2048){send(res,413,{error:'Nội dung quá dài.'});return;}}
+let d;try{d=JSON.parse(raw||'{}');}catch{send(res,400,{error:'JSON không hợp lệ.'});return;}if(!d||typeof d!=='object'||Array.isArray(d)){send(res,400,{error:'Dữ liệu không hợp lệ.'});return;}
+send(res,200,shooter.command(s,op,d));
+}catch(e){if(e instanceof RoomError)send(res,e.status,{error:e.message});else throw e;}return;}
 if(req.method==='GET'&&path==='/api/state'){send(res,200,state(s));return;}
 if(req.method==='GET'&&path==='/api/events'){if(s.streams.size>=5){send(res,429,{error:'Bạn đang mở quá nhiều cửa sổ.'});return;}res.writeHead(200,{'Content-Type':'text/event-stream','Cache-Control':'no-cache','Connection':'keep-alive','X-Accel-Buffering':'no'});res.write(': connected\n\n');s.streams.add(res);broadcast();req.on('close',()=>{s.streams.delete(res);s.last=Date.now();broadcast();});return;}
 if(req.method!=='POST'){send(res,405,{error:'Phương thức không được hỗ trợ.'});return;}
@@ -75,4 +89,7 @@ else{send(res,404,{error:'Không tìm thấy thao tác.'});return;}
 send(res,200,state(s));broadcast();
 }catch(error){console.error(error.message);if(!res.headersSent)send(res,500,{error:'Có lỗi kết nối. Bạn thử lại nhé.'});else res.end();}});
 setInterval(()=>{const now=Date.now();let changed=false;for(const [id,s]of sessions){for(const stream of s.streams)stream.write(': heartbeat\n\n');if(!s.streams.size&&now-s.last>120000){leave(s);sessions.delete(id);changed=true;}}for(const [ip,r]of limits)if(now-r.at>60000)limits.delete(ip);if(changed)broadcast();},20000).unref();
+setInterval(()=>shooter.tick(.05),50).unref();
+setInterval(()=>shooter.publish(),100).unref();
+setInterval(()=>shooter.cleanup(),20000).unref();
 server.listen(port,'0.0.0.0',()=>console.log('Xanh Arcade listening on '+port));

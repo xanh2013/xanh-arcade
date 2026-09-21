@@ -1,12 +1,12 @@
 {
   "name": "xanh-arcade",
-  "version": "2.4.0-beta",
+  "version": "2.5.0-beta",
   "private": true,
   "type": "module",
   "scripts": {
     "start": "node server.mjs",
-    "check": "node --check server.mjs && node --check app.js && node --check games.js && node --check game-rules.js && node --check battle-engine.js && node --check battle-settings.js && node --check battle.js && node --check beta-shop.js && node --check accounts.mjs && node --check account.js && node --check fortnite-engine.js && node --check fortnite.js",
-    "test": "node test.mjs && node battle-test.mjs && node account-test.mjs && node fortnite-test.mjs"
+    "check": "node --check server.mjs && node --check app.js && node --check games.js && node --check game-rules.js && node --check battle-engine.js && node --check battle-settings.js && node --check battle.js && node --check beta-shop.js && node --check accounts.mjs && node --check account.js && node --check fortnite-engine.js && node --check fortnite.js && node --check shooter-rooms.mjs && node --check shooter-client.js && node --check rooms.js",
+    "test": "node test.mjs && node battle-test.mjs && node account-test.mjs && node fortnite-test.mjs && node shooter-test.mjs"
   },
   "engines": {
     "node": ">=22"

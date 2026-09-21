@@ -84,3 +84,15 @@ Implemented: original 12×12 map tiles and collision silhouettes, eight selectab
 The native BETA is an adaptation, not a byte-for-byte Scratch conversion: original cloud multiplayer, trailers, emotes, full cosmetic economy and Scratch save codes are not migrated. Source credits remain in FORTNITE-CREDITS.md; original creator FunnyAnimatorJimTV is credited in the game footer.
 
 Fixes: restart resets stale project state; removed tombstone-based unbounded bullet lists; bounded bullets/effects/loot; fixed timestep with capped catch-up; swept projectile collision; air/vehicle loot lockout; collision-safe landing; six-slot ammo conservation; paused-tab input reset; safe DOM display of nicknames; errors/timeouts for loading assets. Static text/SVG/JSON assets use gzip and cache revalidation.
+
+
+## Multiplayer rooms — BETA 2.5
+
+Open `/rooms?game=battle` or `/rooms?game=fortnite`. Both existing game renderers now support live room matches using server-authoritative simulation (20 Hz), SSE snapshots (10 Hz) and bounded HTTP input (10 Hz). Clients submit only movement, aim and action names; positions, damage, inventory, bot behavior and outcomes are computed by the server. Static artwork remains cached, and nearby loot, bullets and effects are filtered per player.
+
+- Invite by room code/link; 25 total actors. Empty slots become bots at start.
+- Solo or squads: six teams of up to four and a final one-slot team, preserving the requested 25 total. Players select teams before starting; bots fill unoccupied positions. Friendly fire, including occupied allied vehicles, is disabled.
+- Only the host changes difficulty/mode or starts. Other members must be ready. Difficulty/mode/team/join changes are rejected by the server during a match.
+- Host ownership transfers on leaving. A departed player's character becomes a bot. Reconnecting within the 120-second session grace retains the same actor and input sequence. Matches continue when a browser is hidden; controls expire after 600 ms without input.
+- Guest nicknames are not registered accounts. Matches/rooms are temporary in-memory state and are lost on restart/deploy. Initial free-instance guardrail: four active matches. This is not a claim of load-tested capacity for 100 concurrent humans. No revive/knockdown system yet.
+- `node shooter-test.mjs` tests both games' room permissions, capacity, bot fill, independent input, snapshots, friendly fire and host migration; existing single-player suites remain in `npm test`.
