@@ -14,3 +14,15 @@ const sim=fresh();jump(sim);const t=performance.now();for(let i=0;i<26000&&sim.s
 // Deliberately run a long storm-only match without shooting to verify eventual completion.
 const storm=fresh();jump(storm);for(let i=0;i<28000&&storm.status==='playing';i++)step(storm,.05,{});assert.notEqual(storm.status,'playing');
 console.log('PASS Fortnite Z: original asset routes, flight/descent, ground-only loot, 6 slots, ammo conservation, healing, one-time chests, wall collision/cost, vehicles/fuel, grenades, finite simulation and cleanup.');
+
+// F must open a real map chest even when closer loose loot cannot be collected.
+const cw=fresh();cw.phase='drop';const cp=cw.player;cp.air=0;cp.armor=100;cp.med=5;cp.wood=200;cp.ammo.light=300;
+for(const c of cw.chests){
+Object.assign(cp,{x:c.x,y:c.y});cw.loot=[{x:cp.x,y:cp.y,type:'armor'},{x:cp.x,y:cp.y,type:'med'},{x:cp.x,y:cp.y,type:'ammo',ammo:'light',amount:30},{x:cp.x,y:cp.y,type:'wood'}];
+assert.equal(nearby(cw),c);assert.equal(collect(cw),true);assert.equal(c.open,true);assert.equal(collect(cw,cp,c),false);
+}
+cw.chests=[];cw.loot=[{x:cp.x,y:cp.y,type:'armor'},{x:cp.x,y:cp.y,type:'med'},{x:cp.x,y:cp.y,type:'ammo',ammo:'light',amount:30},{x:cp.x,y:cp.y,type:'wood'}];assert.equal(nearby(cw),null);assert.equal(collect(cw),false);
+const cc={x:cp.x,y:cp.y,open:false};cw.chests=[cc];cp.air=1;assert.equal(collect(cw),false);cp.air=0;cp.vehicle=0;assert.equal(collect(cw),false);cp.vehicle=null;cw.walls=[{x:cp.x+10,y:cp.y-30,w:10,h:60,hp:100}];cc.x+=40;assert.equal(nearby(cw),null);assert.equal(collect(cw,cp,cc),false);
+console.log('PASS chest priority, all map chests, full supplies, one-time rewards, airborne/vehicle/wall restrictions');
+
+const priority=fresh();priority.phase='drop';priority.player.air=0;priority.terrain.point=()=>false;Object.assign(priority.player,{x:1000,y:1000,armor:100});const priorityChest={x:1060,y:1000,open:false};priority.chests=[priorityChest];priority.loot=[{x:1000,y:1000,type:'armor'}];assert.equal(nearby(priority),priorityChest);assert.equal(collect(priority),true);assert.equal(priorityChest.open,true);
