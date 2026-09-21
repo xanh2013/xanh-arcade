@@ -2,7 +2,9 @@ import http from 'node:http';
 import {createAccounts,AccountError} from './accounts.mjs';
 const accounts=createAccounts(),authRates=new Map();
 import {winningLine} from './game-rules.js';
-import {readFile} from 'node:fs/promises';
+import {readFile,readdir} from 'node:fs/promises';
+import {gzipSync} from 'node:zlib';
+const staticCache=new Map();
 import {randomUUID,randomBytes} from 'node:crypto';
 const port=Number(process.env.PORT)||3000, sessions=new Map(), rooms=new Map(), limits=new Map();
 const files={'/so-do':['so-do.svg','image/svg+xml'],'/so-do.svg':['so-do.svg','image/svg+xml'],'/':['index.html','text/html; charset=utf-8'],'/app.js':['app.js','text/javascript; charset=utf-8'],'/style.css':['style.css','text/css; charset=utf-8'],'/favicon.svg':['favicon.svg','image/svg+xml']};
@@ -15,6 +17,10 @@ files['/battle']=['battle.html','text/html; charset=utf-8'];files['/shop']=['sho
 files['/account']=['account.html','text/html; charset=utf-8'];
 files['/account.js']=['account.js','text/javascript; charset=utf-8'];
 files['/account.css']=['account.css','text/css; charset=utf-8'];
+files['/fortnite-z']=['fortnite.html','text/html; charset=utf-8'];
+for(const f of ['fortnite.js','fortnite-engine.js'])files['/'+f]=[f,'text/javascript; charset=utf-8'];
+files['/fortnite.css']=['fortnite.css','text/css; charset=utf-8'];
+for(const f of await readdir(new URL('fortnite-assets/',import.meta.url))){if(/^[a-zA-Z0-9_-]+\.(svg|json)$/.test(f))files['/fortnite-assets/'+f]=['fortnite-assets/'+f,f.endsWith('.svg')?'image/svg+xml':'application/json; charset=utf-8'];}
 const games=new Set(['caro','chess','runner','blocks']);
 function send(res,status,data){res.writeHead(status,{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store'});res.end(JSON.stringify(data));}
 function roomView(r){return {code:r.code,title:r.title,game:r.game,match:r.match?{board:r.match.board,turn:r.match.turn,status:r.match.status,winner:r.match.winner,line:r.match.line,last:r.match.last}:null,members:[...r.members].map(id=>{const s=sessions.get(id);return {name:s?.name||'Người chơi',ready:s?.ready||false,host:r.host===id,role:r.match?.players.indexOf(id)===0?'X':r.match?.players.indexOf(id)===1?'O':null};})};}
@@ -24,8 +30,8 @@ function leave(s){const r=rooms.get(s.room);if(r){if(r.match?.status==='playing'
 const server=http.createServer(async(req,res)=>{try{
 res.setHeader('X-Content-Type-Options','nosniff');res.setHeader('Referrer-Policy','same-origin');res.setHeader('X-Frame-Options','DENY');res.setHeader('Content-Security-Policy',"default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; base-uri 'none'; frame-ancestors 'none'");
 const path=new URL(req.url,'http://localhost').pathname;
-if(req.method==='GET'&&files[path]){const [file,type]=files[path];res.writeHead(200,{'Content-Type':type,'Cache-Control':'no-cache'});res.end(await readFile(new URL(file,import.meta.url)));return;}
-if(path==='/health'){send(res,200,{ok:true,version:'2.3.0-beta'});return;}
+if(req.method==='GET'&&files[path]){const [file,type]=files[path];let cached=staticCache.get(file);if(!cached){const raw=await readFile(new URL(file,import.meta.url));cached={raw,gzip:/text|json|svg/.test(type)&&raw.length>1024?gzipSync(raw):null};staticCache.set(file,cached);}const zipped=cached.gzip&&/\bgzip\b/.test(req.headers['accept-encoding']||'');res.writeHead(200,{'Content-Type':type,'Cache-Control':'no-cache','Vary':'Accept-Encoding',...(zipped?{'Content-Encoding':'gzip'}:{})});res.end(zipped?cached.gzip:cached.raw);return;}
+if(path==='/health'){send(res,200,{ok:true,version:'2.4.0-beta'});return;}
 if(!path.startsWith('/api/')){send(res,404,{error:'Không tìm thấy trang.'});return;}
 if(req.method==='POST'&&(!req.headers.origin||new URL(req.headers.origin).host!==req.headers.host)){send(res,403,{error:'Yêu cầu không hợp lệ.'});return;}
 if(/^\/api\/(auth|shop)\//.test(path)){

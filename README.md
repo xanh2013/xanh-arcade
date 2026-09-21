@@ -74,3 +74,13 @@ Supabase project rclvffhlscuuptpmhiej (Singapore) now has the xa_* tables and RL
 - G deploys a destructible 55-second glue wall; V enters/exits nearby vehicles. Vehicles have collision, health and finite fuel. Two gun slots, sniper rifle, supplies and five shrinking-zone phases.
 - Full island overview, remappable keyboard controls, local top-20 results (50 retained), difficulty filter. Rankings are device-only and untrusted; they are not an online competitive leaderboard.
 - Account backend is connected, but external signup requires configuring custom SMTP and verifying Supabase Auth redirect settings with the project owner's account.
+
+
+## Fortnite Z — native BETA 01
+Separate route `/fortnite-z`, adapted from the user-supplied 78 MB TurboWarp HTML. No embedded source scripts or Scratch VM are run. The original HTML and Drive source are unchanged.
+
+Implemented: original 12×12 map tiles and collision silhouettes, eight selectable original skins, 18 weapon specifications, six weapon slots, finite ammo/reloading, 24 bots, gliding, loot/chests, tree harvesting, wood walls, grenades/rockets, four vehicle types with fuel/health, launchpads, storm, touch controls, pause, synthesized sound, and local rankings.
+
+The native BETA is an adaptation, not a byte-for-byte Scratch conversion: original cloud multiplayer, trailers, emotes, full cosmetic economy and Scratch save codes are not migrated. Source credits remain in FORTNITE-CREDITS.md; original creator FunnyAnimatorJimTV is credited in the game footer.
+
+Fixes: restart resets stale project state; removed tombstone-based unbounded bullet lists; bounded bullets/effects/loot; fixed timestep with capped catch-up; swept projectile collision; air/vehicle loot lockout; collision-safe landing; six-slot ammo conservation; paused-tab input reset; safe DOM display of nicknames; errors/timeouts for loading assets. Static text/SVG/JSON assets use gzip and cache revalidation.
