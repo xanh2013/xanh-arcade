@@ -1,0 +1,10 @@
+import assert from 'node:assert/strict';
+import {createNetworkMotion} from './network-motion.js';
+const m=createNetworkMotion();
+const state=(x,angle=0)=>({matchId:'a',status:'playing',actors:[{id:0,x,y:20,angle,alive:true}],bullets:[{x:5,y:5,vx:100,vy:0}]});
+let w=state(0);m.accept(w,100);m.draw(w,200,()=>{});
+w=state(100);m.accept(w,200);m.draw(w,250,()=>{assert.equal(w.actors[0].x,50);assert.equal(w.bullets[0].x,10);});assert.equal(w.actors[0].x,100);assert.equal(w.bullets[0].x,5);
+assert.throws(()=>m.draw(w,275,()=>{throw Error('draw');}));assert.equal(w.actors[0].x,100);
+w=state(1000);m.accept(w,300);m.draw(w,300,()=>assert.equal(w.actors[0].x,1000));
+w=state(10);w.matchId='new';m.accept(w,310);m.draw(w,310,()=>assert.equal(w.actors[0].x,10));
+console.log('Motion interpolation, bounded bullet projection, teleport/reset and authoritative-state restoration passed');
