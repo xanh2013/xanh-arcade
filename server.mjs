@@ -24,7 +24,7 @@ for(const f of ['fortnite.js','fortnite-engine.js'])files['/'+f]=[f,'text/javasc
 files['/fortnite.css']=['fortnite.css','text/css; charset=utf-8'];
 for(const f of await readdir(new URL('fortnite-assets/',import.meta.url))){if(/^[a-zA-Z0-9_-]+\.(svg|json)$/.test(f))files['/fortnite-assets/'+f]=['fortnite-assets/'+f,f.endsWith('.svg')?'image/svg+xml':'application/json; charset=utf-8'];}
 files['/rooms']=['rooms.html','text/html; charset=utf-8'];
-for(const f of ['rooms.js','shooter-client.js','network-motion.js'])files['/'+f]=[f,'text/javascript; charset=utf-8'];files['/rooms.css']=['rooms.css','text/css; charset=utf-8'];
+ for(const f of ['rooms.js','shooter-client.js','network-motion.js','resource-sharing.js'])files['/'+f]=[f,'text/javascript; charset=utf-8'];files['/rooms.css']=['rooms.css','text/css; charset=utf-8'];
 files['/online.css']=['online.css','text/css; charset=utf-8'];
 const games=new Set(['caro','chess','runner','blocks']);
 function send(res,status,data){res.writeHead(status,{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store'});res.end(JSON.stringify(data));}
