@@ -13,3 +13,16 @@ $('#rename').onsubmit=e=>{e.preventDefault();const f=e.currentTarget;run(f.query
 try{const me=await api('auth/me');if(!me.configured){status('Tạo nick đang chờ kích hoạt máy chủ. Bạn vẫn có thể chơi Battle BETA và dùng shop chơi khách.');}else{catalog=(await api('shop/catalog')).catalog;account=me.account;render();status(account?'Nick đã được kết nối.':confirmationReturned?'Email đã được xác nhận. Đăng nhập để vào nick.':'Đăng nhập hoặc tạo nick để lưu hồ sơ và đồ trực tuyến.');}}catch(e){status(e.message);}
 
 for(const [id,enabled] of [['admin-enable',true],['admin-disable',false]])$( '#'+id).onclick=e=>run(e.currentTarget,async()=>{const r=await api('shooter/admin-boost',{enabled});status(r.adminBoostActive?'Đã bật hỗ trợ tài nguyên.':'Đã tắt hỗ trợ tài nguyên.');});
+
+// Admin-only resource sharing monitor
+const fmtGb=b=>(b/1073741824).toFixed(b<1e6?6:4)+' GB/s';
+function drawShare(history){const c=$('#share-chart'),x=c.getContext('2d'),W=c.width,H=c.height;x.clearRect(0,0,W,H);const cs=getComputedStyle(c);const maxCpu=Math.max(50,...history.map(h=>h.cpuMs)),maxB=Math.max(1e5,...history.map(h=>h.bytes));x.globalAlpha=.25;x.strokeStyle=cs.color;for(let i=1;i<4;i++){x.beginPath();x.moveTo(0,H*i/4);x.lineTo(W,H*i/4);x.stroke();}x.globalAlpha=1;
+ const line=(key,max,color)=>{x.strokeStyle=color;x.lineWidth=2;x.beginPath();history.forEach((h,i)=>{const px=i/(history.length-1)*W,py=H-6-(h[key]/max)*(H-24);i?x.lineTo(px,py):x.moveTo(px,py);});x.stroke();};
+ line('cpuMs',maxCpu,'#3ddc84');line('bytes',maxB,'#4aa3ff');x.font='12px sans-serif';x.fillStyle='#3ddc84';x.fillText('CPU (đỉnh '+maxCpu.toFixed(0)+' ms/s)',8,14);x.fillStyle='#4aa3ff';x.fillText('RAM/dữ liệu (đỉnh '+fmtGb(maxB)+')',200,14);x.fillStyle=cs.color;x.fillText('60 giây gần nhất',W-110,14);}
+async function pollShare(){if(account?.role!=='admin'||$('#admin-panel').hidden)return;try{const r=await api('shooter/admin-resource-stats',{});const last=r.history.slice(-5),cpu=last.reduce((a,h)=>a+h.cpuMs,0)/last.length,bytes=last.reduce((a,h)=>a+h.bytes,0)/last.length;
+ const cores=r.hosts.reduce((a,h)=>a+h.cores,0)||1,pct=cpu/10/cores;const level=cpu<1?'Không chia sẻ':cpu<20?'Ít':cpu<60?'Vừa':'Nhiều';
+ $('#share-level').textContent=(r.adminBoostActive?'Đang bật':'Đang tắt')+' · Mức chia sẻ: '+level;$('#share-cpu').textContent=cpu.toFixed(1)+' ms/s ('+pct.toFixed(2)+'% CPU)';$('#share-ram').textContent=fmtGb(bytes);$('#share-hosts').textContent=r.hosts.filter(h=>h.host).length+' / '+r.hosts.length;
+ const t=$('#share-table');t.replaceChildren();const head=t.insertRow();for(const h of ['Người chơi','Luồng CPU','RAM máy','CPU ms/s','GB/s','Ping','Mất gói','Tổng'])head.appendChild(Object.assign(document.createElement('th'),{textContent:h}));
+ for(const h of r.hosts){const row=t.insertRow();for(const v of [h.name+(h.host?' ✓':''),h.cores,h.memoryGb?h.memoryGb+' GB':'?',h.cpuMs.toFixed(1),fmtGb(h.bytes),h.rtt==null?'-':h.rtt.toFixed(0)+' ms',(h.packetLoss*100).toFixed(1)+'%',(h.totalCpuMs/1000).toFixed(1)+' s CPU · '+(h.totalBytes/1048576).toFixed(2)+' MB'])row.insertCell().textContent=v;}
+ drawShare(r.history);}catch(e){$('#share-level').textContent=e.message;}}
+setInterval(pollShare,2000);setTimeout(pollShare,500);
