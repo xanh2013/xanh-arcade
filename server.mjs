@@ -59,8 +59,8 @@ if(req.method==='GET'&&op==='state'){send(res,200,shooter.command(s,'state'));re
 if(req.method!=='POST'){send(res,405,{error:'Phương thức không hỗ trợ.'});return;}
 let raw='';for await(const chunk of req){raw+=chunk;if(raw.length>2048){send(res,413,{error:'Nội dung quá dài.'});return;}}
 let d;try{d=JSON.parse(raw||'{}');}catch{send(res,400,{error:'JSON không hợp lệ.'});return;}if(!d||typeof d!=='object'||Array.isArray(d)){send(res,400,{error:'Dữ liệu không hợp lệ.'});return;}
-send(res,200,shooter.command(s,op,d));
-}catch(e){if(e instanceof RoomError)send(res,e.status,{error:e.message});else throw e;}return;}
+if(op==='admin-boost'){await accounts.requireAdmin(req,res);send(res,200,shooter.command(s,op,d,{admin:true}));}else send(res,200,shooter.command(s,op,d));
+}catch(e){if(e instanceof RoomError||e instanceof AccountError)send(res,e.status,{error:e.message});else throw e;}return;}
 if(req.method==='GET'&&path==='/api/state'){send(res,200,state(s));return;}
 if(req.method==='GET'&&path==='/api/events'){if(s.streams.size>=5){send(res,429,{error:'Bạn đang mở quá nhiều cửa sổ.'});return;}res.writeHead(200,{'Content-Type':'text/event-stream','Cache-Control':'no-cache','Connection':'keep-alive','X-Accel-Buffering':'no'});res.write(': connected\n\n');s.streams.add(res);broadcast();req.on('close',()=>{s.streams.delete(res);s.last=Date.now();broadcast();});return;}
 if(req.method!=='POST'){send(res,405,{error:'Phương thức không được hỗ trợ.'});return;}

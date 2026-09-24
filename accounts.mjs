@@ -21,7 +21,7 @@ export function createAccounts({url=process.env.SUPABASE_URL,key=process.env.SUP
   const refresh=cookie(req,'xa_refresh');if(!refresh)throw new AccountError(401,friendly.AUTH_REQUIRED);
   try{const id=createHash('sha256').update(refresh).digest('hex');let pending=refreshes.get(id);if(!pending){pending=remote('/auth/v1/token?grant_type=refresh_token',{data:{refresh_token:refresh}});refreshes.set(id,pending);pending.finally(()=>{const timer=setTimeout(()=>refreshes.delete(id),10000);timer.unref?.();}).catch(()=>{});}const tokens=await pending;if(!tokens.access_token||!tokens.refresh_token)throw new AccountError(401,friendly.AUTH_REQUIRED);cookies(res,tokens);token=tokens.access_token;return {token,user:await remote('/auth/v1/user',{method:'GET',token})};}catch(e){if(e.status===400||e.status===401||e.status===403){cookies(res,null);throw new AccountError(401,'Phiên đã hết hạn. Đăng nhập lại nhé.');}throw e;}
  }
- async function account(ctx){const profile=await remote('/rest/v1/rpc/xa_account',{token:ctx.token,data:{}});return {...profile,email:ctx.user.email};}
+ async function account(ctx){const profile=await remote('/rest/v1/rpc/xa_account',{token:ctx.token,data:{}});return {...profile,email:ctx.user.email,role:ctx.user.app_metadata?.role==='admin'?'admin':'player'};}
  async function handle(path,data,req,res){
   if(path==='shop/catalog'){if(!configured)return {configured:false,catalog};return {configured:true,catalog:await remote('/rest/v1/xa_catalog?select=id,slot,name,description,price,variant&order=price.asc',{method:'GET'})};}
   if(!configured){if(path==='auth/me')return {configured:false,account:null};throw new AccountError(503,'Tính năng tài khoản đang chờ kết nối. Bạn vẫn có thể chơi game và xem shop.');}
@@ -51,5 +51,6 @@ export function createAccounts({url=process.env.SUPABASE_URL,key=process.env.SUP
   if(path==='shop/equip'&&(!['runner','paddle','board','avatar','battle'].includes(data.slot)||(data.itemId!==null&&(typeof data.itemId!=='string'||data.itemId.length>60))))throw new AccountError(400,'Trang bị không hợp lệ.');
   const profile=await remote('/rest/v1/rpc/'+proc[0],{token:ctx.token,data:proc[1]});return {configured:true,account:{...profile,email:ctx.user.email}};
  }
- return {configured,handle};
+ async function requireAdmin(req,res){if(!configured)throw new AccountError(503,'Tài khoản chưa kết nối.');const ctx=await context(req,res);if(!ctx.user.email_confirmed_at||ctx.user.app_metadata?.role!=='admin')throw new AccountError(403,'Chỉ tài khoản admin được dùng chức năng này.');return ctx.user.id;}
+ return {configured,handle,requireAdmin};
 }
