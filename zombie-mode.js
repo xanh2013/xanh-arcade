@@ -52,7 +52,7 @@ export function stepZombie(w,a,dt,api){
  if(dist<a.r+target.r+16&&api.lineClear(a,target,w)){
   if(a.cool<=0){const damage=({easy:9,normal:12,hard:16}[w.difficulty])*(a.variant==='brute'?1.8:1);api.hit(w,target,damage,a);a.cool=a.variant==='runner'?.85:1.25;a.attack=.25;}return;
  }
- if(a.pathTime<=0&&w.zombiePathBudget>0){w.zombiePathBudget--;a.pathTime=1.5+(a.id%6)*.2;a.path=api.lineClear(a,target,w)?[]:api.findPath(a,target);}
+ const remote=w.resourceOffload?.paths?.get(a.id);if(remote){a.path=remote;a.pathTime=1.8;w.resourceOffload.paths.delete(a.id);}if(a.pathTime<=0&&w.zombiePathBudget>0){w.zombiePathBudget--;a.pathTime=1.5+(a.id%6)*.2;a.path=api.lineClear(a,target,w)?[]:api.findPath(a,target);}
  if(a.path.length&&Math.hypot(a.x-a.path[0].x,a.y-a.path[0].y)<40)a.path.shift();
  const dest=a.path[0]||target,angle=Math.atan2(dest.y-a.y,dest.x-a.x),step=a.speed*dt;
  api.moveActor(a,Math.cos(angle)*step,Math.sin(angle)*step,w);
@@ -65,3 +65,4 @@ export function finishZombies(w){
  z.remaining=z.spawnLeft+w.actors.filter(a=>a.zombie&&a.alive).length;
  if(z.wave>0&&z.remaining===0&&z.rest<=0){if(z.wave===z.totalWaves)w.status='won';else{z.rest=15;supply(w);w.events.push({type:'resupply'});}}
 }
+
