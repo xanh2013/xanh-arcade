@@ -9,8 +9,8 @@ export function detectResourceCapabilities(scope=globalThis){
  const connection=navigatorLike.connection||{};
  const saveData=connection.saveData===true;
  const mobile=/Android|iPhone|iPad|Mobile/i.test(navigatorLike.userAgent||'');
- let webgl=false;
- try{const canvas=scope.document?.createElement?.('canvas');webgl=!!canvas?.getContext('webgl2')||!!canvas?.getContext('webgl');}catch{}
+ // CPU jobs do not need a WebGL context; avoid allocating GPU contexts for telemetry.
+ const webgl=false;
  const eligible=!saveData&&cores>=4&&(!memoryGb||memoryGb>=4);
  return {cores,memoryGb,webgl,saveData,mobile,eligible,dutyCycle:RESOURCE_DUTY_CYCLE};
 }

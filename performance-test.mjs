@@ -1,0 +1,10 @@
+import assert from 'node:assert/strict';
+import {lineClear,WALLS} from './battle-engine.js';
+import {createShooterRooms} from './shooter-rooms.mjs';
+const reference=(a,b,w)=>{for(const r of [...WALLS,...(w?.covers||[])]){let lo=0,hi=1;const dx=b.x-a.x,dy=b.y-a.y;for(const [p,q]of [[-dx,a.x-r.x],[dx,r.x+r.w-a.x],[-dy,a.y-r.y],[dy,r.y+r.h-a.y]]){if(p===0){if(q<0){lo=2;break;}}else if(p<0)lo=Math.max(lo,q/p);else hi=Math.min(hi,q/p);}if(lo<=hi)return false;}return true;};
+let seed=37;const random=()=>((seed=Math.imul(seed,1664525)+1013904223>>>0)/4294967296),cover={covers:[{x:8000,y:8000,w:150,h:30}]};
+for(let i=0;i<30000;i++){const a={x:random()*16000,y:random()*16000},b={x:a.x+(random()-.5)*2000,y:a.y+(random()-.5)*2000};if(i%5===0)b.x=a.x;if(i%7===0)b.y=a.y;assert.equal(lineClear(a,b,cover),reference(a,b,cover));}
+for(const wall of [...WALLS,...cover.covers])for(const a of [{x:wall.x,y:wall.y},{x:wall.x+wall.w,y:wall.y+wall.h}])assert.equal(lineClear(a,a,cover),reference(a,a,cover));
+const mgr=createShooterRooms(),u={id:'viewer',name:'Viewer'},room=mgr.command(u,'create',{game:'battle',mode:'solo',difficulty:'easy'}).room;mgr.command(u,'start');const w=mgr.rooms.get(room.code).match.world;w.player.x=8000;w.player.y=8000;for(const a of w.actors.slice(1)){a.x=1000+a.id*10;a.y=1000;}w.actors[1].x=8080;w.actors[1].y=8000;
+const packets=[];mgr.subscribe(u,{writeHead(){},write(s){packets.push(s)},on(){},writableLength:0});const snapshot=JSON.parse(packets.findLast(s=>s.startsWith('event: match')).split('data: ')[1]);assert.deepEqual(snapshot.actors[0].bag,w.player.bag);assert.ok(snapshot.actors[1].slots);assert.equal(snapshot.actors[2].bag,undefined);assert.equal(snapshot.actors[2].id,2);assert.equal(snapshot.actors.length,25);
+const keys=Object.keys(snapshot.actors[0]);const baseline=w.actors.map(a=>Object.fromEntries(keys.map(k=>[k,a[k]])));const before=JSON.stringify(baseline).length,after=JSON.stringify(snapshot.actors).length;assert.ok(after<before*.65);console.log('PASS geometry equivalence (30,000 segments + corner/zero-length cases), own/nearby actor completeness and distant actor culling: '+before+' → '+after+' actor JSON bytes.');
