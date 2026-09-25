@@ -8,7 +8,7 @@ import {readFile,readdir} from 'node:fs/promises';
 import {gzipSync} from 'node:zlib';
 const staticCache=new Map();
 import {randomUUID,randomBytes} from 'node:crypto';
-const port=Number(process.env.PORT)||3000, sessions=new Map(), rooms=new Map(), limits=new Map();
+const port=Number(process.env.PORT)||8000, sessions=new Map(), rooms=new Map(), limits=new Map();
 const files={'/so-do':['so-do.svg','image/svg+xml'],'/so-do.svg':['so-do.svg','image/svg+xml'],'/':['index.html','text/html; charset=utf-8'],'/app.js':['app.js','text/javascript; charset=utf-8'],'/style.css':['style.css','text/css; charset=utf-8'],'/favicon.svg':['favicon.svg','image/svg+xml']};
 for(const game of ['runner','blocks','caro','chess']) files['/cover-'+game+'-v2.webp']=['cover-'+game+'-v2.webp','image/webp'];
 for(const name of ['game-rules.js','games.js'])files['/'+name]=[name,'text/javascript; charset=utf-8'];
@@ -92,6 +92,14 @@ setInterval(()=>{const now=Date.now();let changed=false;for(const [id,s]of sessi
 setInterval(()=>shooter.tick(.05),50).unref();
 setInterval(()=>shooter.publish(),100).unref();
 setInterval(()=>shooter.cleanup(),20000).unref();
+// Koyeb: keep sockets bounded, recover memory, and exit cleanly so the platform can restart.
+server.keepAliveTimeout=65000;server.headersTimeout=66000;server.requestTimeout=30000;server.maxConnections=3000;
+const MEMORY_LIMIT_MB=Number(process.env.MEMORY_LIMIT_MB)||512;
+setInterval(()=>{const {rss,heapUsed}=process.memoryUsage(),mb=rss/1048576;if(mb>MEMORY_LIMIT_MB*.8){limits.clear();for(const [id,s]of sessions)if(!s.streams.size){leave(s);sessions.delete(id);}shooter.cleanup();globalThis.gc?.();console.warn('Memory high: '+Math.round(mb)+'MB RSS, heap '+Math.round(heapUsed/1048576)+'MB, trimmed idle sessions');}},15000).unref();
+process.on('unhandledRejection',e=>console.error('Unhandled rejection',e));
+process.on('uncaughtException',e=>{console.error('Fatal error',e);process.exit(1);});
+let closing=false;const shutdown=()=>{if(closing)return;closing=true;console.log('Shutting down');server.close(()=>process.exit(0));server.closeAllConnections?.();setTimeout(()=>process.exit(0),8000).unref();};
+process.on('SIGTERM',shutdown);process.on('SIGINT',shutdown);
 server.listen(port,'0.0.0.0',()=>console.log('Xanh Arcade listening on '+port));
 
 
