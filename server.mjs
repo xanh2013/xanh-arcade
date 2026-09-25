@@ -24,7 +24,7 @@ for(const f of ['fortnite.js','fortnite-engine.js'])files['/'+f]=[f,'text/javasc
 files['/fortnite.css']=['fortnite.css','text/css; charset=utf-8'];
 for(const f of await readdir(new URL('fortnite-assets/',import.meta.url))){if(/^[a-zA-Z0-9_-]+\.(svg|json)$/.test(f))files['/fortnite-assets/'+f]=['fortnite-assets/'+f,f.endsWith('.svg')?'image/svg+xml':'application/json; charset=utf-8'];}
 files['/rooms']=['rooms.html','text/html; charset=utf-8'];
- for(const f of ['rooms.js','shooter-client.js','network-motion.js','resource-sharing.js'])files['/'+f]=[f,'text/javascript; charset=utf-8'];files['/rooms.css']=['rooms.css','text/css; charset=utf-8'];
+ for(const f of ['rooms.js','shooter-client.js','network-motion.js','resource-sharing.js','resource-worker.js','resource-executor.js'])files['/'+f]=[f,'text/javascript; charset=utf-8'];files['/rooms.css']=['rooms.css','text/css; charset=utf-8'];
 files['/online.css']=['online.css','text/css; charset=utf-8'];
 const games=new Set(['caro','chess','runner','blocks']);
 function send(res,status,data){res.writeHead(status,{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store'});res.end(JSON.stringify(data));}
@@ -57,7 +57,7 @@ const op=path.slice('/api/shooter/'.length);try{
 if(req.method==='GET'&&op==='events'){shooter.subscribe(s,res);return;}
 if(req.method==='GET'&&op==='state'){send(res,200,shooter.command(s,'state'));return;}
 if(req.method!=='POST'){send(res,405,{error:'Phương thức không hỗ trợ.'});return;}
-let raw='';for await(const chunk of req){raw+=chunk;if(raw.length>2048){send(res,413,{error:'Nội dung quá dài.'});return;}}
+let raw='';for await(const chunk of req){raw+=chunk;if(raw.length>(op==='resource-result'||op==='admin-resource-result'?65536:4096)){send(res,413,{error:'Nội dung quá dài.'});return;}}
 let d;try{d=JSON.parse(raw||'{}');}catch{send(res,400,{error:'JSON không hợp lệ.'});return;}if(!d||typeof d!=='object'||Array.isArray(d)){send(res,400,{error:'Dữ liệu không hợp lệ.'});return;}
 if(op.startsWith('admin-')){await accounts.requireAdmin(req,res);send(res,200,shooter.command(s,op,d,{admin:true}));}else send(res,200,shooter.command(s,op,d));
 }catch(e){if(e instanceof RoomError||e instanceof AccountError)send(res,e.status,{error:e.message});else throw e;}return;}

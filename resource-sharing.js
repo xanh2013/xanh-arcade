@@ -85,7 +85,7 @@ function pathFor(grid,request){
 
 function computeBotPaths(task){
  const grid=makeGrid(task);
- return {kind:task.kind,paths:(task.requests||[]).map(request=>({id:request.id,path:pathFor(grid,request)}))};
+ return {kind:task.kind,paths:(task.requests||[]).map(request=>({id:request.id,path:pathFor(grid,request).slice(0,64)}))};
 }
 
 function segmentDistance(point,bullet){
@@ -111,7 +111,7 @@ function computeBulletCollisions(task){
 
 export function runResourceTask(task,{capabilities}={}){
  if(!task||task.protocol!==RESOURCE_PROTOCOL)return {kind:'invalid',error:'unsupported-protocol'};
- const mode=capabilities?.webgl&&typeof globalThis.GPU==='function'?'gpu.js-matrix':'typed-matrix';
+ const mode='cpu-worker';
  if(task.kind==='bot-pathfinding')return {...computeBotPaths(task),mode};
  if(task.kind==='bullet-collision')return {...computeBulletCollisions(task),mode};
  return {kind:'invalid',error:'unsupported-task'};
