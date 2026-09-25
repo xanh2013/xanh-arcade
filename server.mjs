@@ -13,7 +13,7 @@ const files={'/so-do':['so-do.svg','image/svg+xml'],'/so-do.svg':['so-do.svg','i
 for(const game of ['runner','blocks','caro','chess']) files['/cover-'+game+'-v2.webp']=['cover-'+game+'-v2.webp','image/webp'];
 for(const name of ['game-rules.js','games.js'])files['/'+name]=[name,'text/javascript; charset=utf-8'];
 for(const name of ['runner','space'])files['/background-'+name+'-v2.webp']=['background-'+name+'-v2.webp','image/webp'];
-for(const f of ['battle.js','battle-engine.js','battle-settings.js','beta-shop.js'])files['/'+f]=[f,'text/javascript; charset=utf-8'];
+for(const f of ['battle.js','battle-engine.js','battle-weapons.js','zombie-mode.js','performance-meter.js','battle-settings.js','beta-shop.js'])files['/'+f]=[f,'text/javascript; charset=utf-8'];
 for(const f of ['battle.css','shop.css'])files['/'+f]=[f,'text/css; charset=utf-8'];
 files['/battle']=['battle.html','text/html; charset=utf-8'];files['/shop']=['shop.html','text/html; charset=utf-8'];
 files['/account']=['account.html','text/html; charset=utf-8'];
@@ -93,3 +93,4 @@ setInterval(()=>shooter.tick(.05),50).unref();
 setInterval(()=>shooter.publish(),100).unref();
 setInterval(()=>shooter.cleanup(),20000).unref();
 server.listen(port,'0.0.0.0',()=>console.log('Xanh Arcade listening on '+port));
+

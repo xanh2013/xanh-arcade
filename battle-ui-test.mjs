@@ -1,0 +1,12 @@
+// Headless module smoke test with a minimal DOM, not a browser FPS measurement.
+import assert from 'node:assert/strict';
+const nodes=new Map();let nextFrame,clock=0,drawCalls=0;
+const context=new Proxy({createPattern:()=>({})},{get:(o,k)=>o[k]??(()=>{drawCalls++;}),set:(o,k,v)=>(o[k]=v,true)});
+class Node{constructor(){this.value='';this.hidden=false;this.disabled=false;this.dataset={};this.style={};this.children=[];this.width=1100;this.height=680;this.classList={add(){},remove(){},toggle(){}};}setAttribute(){}addEventListener(){}append(...v){this.children.push(...v);}replaceChildren(){this.children=[];}get childElementCount(){return this.children.length;}getContext(){return context;}getBoundingClientRect(){return {left:0,top:0,width:1100,height:680};}focus(){}querySelector(){return new Node();}showModal(){this.open=true;}close(){this.open=false;}}
+const get=s=>{if(!nodes.has(s))nodes.set(s,new Node());return nodes.get(s);};
+globalThis.document={hidden:false,querySelector:s=>s==='#shop-grid'||s==='dialog[open]'?null:get(s),querySelectorAll:s=>s==='dialog'?['key','rank','map','weapon'].map(k=>get('#'+k+'-dialog')):s==='[data-class]'?['vanguard','ranger','scout'].map(k=>{const n=get('class'+k);n.dataset.class=k;return n;}):s==='[data-skill]'?['dash','shield','nova'].map(k=>{const n=get('skill'+k);n.dataset.skill=k;return n;}):[],createElement:()=>new Node(),addEventListener(){}};
+globalThis.window={addEventListener(){}};globalThis.location={search:'?mode=zombie',protocol:'http:'};globalThis.localStorage={getItem(){return null;},setItem(){}};globalThis.fetch=async()=>({ok:true,json:async()=>({account:null})});globalThis.requestAnimationFrame=cb=>{nextFrame=cb;};globalThis.performance={now:()=>clock};globalThis.setTimeout=()=>0;globalThis.clearTimeout=()=>{};
+await import('./battle.js');assert.equal(get('#game-mode').value,'zombie');get('#difficulty').value='easy';get('#quality').value='auto';get('#player-name').value='Test';await get('#start').onclick();
+for(let i=0;i<600;i++){clock+=1000/60;nextFrame();}
+assert.ok(drawCalls>1000);assert.match(get('#zone').textContent,/ĐỢT 1\/8/);assert.match(get('#perf-fps').textContent,/60 FPS/);assert.match(get('#perf-ping').textContent,/Solo/);get('#armory').onclick();assert.equal(get('#weapon-list').children.length,20);assert.equal(get('#weapon-dialog').open,true);
+console.log('PASS battle UI module smoke: starts Zombie, simulates/render calls, HUD and 60 Hz meter, 20 weapon cards, dialog opens. DOM/canvas are mocked; no visual or real FPS claim.');
