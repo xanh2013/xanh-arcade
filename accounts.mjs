@@ -1,3 +1,4 @@
+import {secureCookies} from './runtime-config.mjs';
 import {catalog} from './shop-catalog.js';
 import {createHash} from 'node:crypto';
 export class AccountError extends Error{constructor(status,message){super(message);this.status=status;}}
@@ -5,7 +6,7 @@ const friendly={NOT_ENOUGH_COINS:'Chưa đủ xu. Nhận quà hằng ngày để
 function cookie(req,name){try{return decodeURIComponent(new RegExp('(?:^|;\\s*)'+name+'=([^;]+)').exec(req.headers.cookie||'')?.[1]||'');}catch{return '';}}
 function email(value){if(typeof value!=='string'||value.length>254||!/^\S+@[^\s@]+\.[^\s@]+$/.test(value.trim()))throw new AccountError(400,'Nhập email hợp lệ nhé.');return value.trim().toLowerCase();}
 function nickname(value){if(typeof value!=='string')throw new AccountError(400,friendly.INVALID_NICKNAME);const n=value.trim().replace(/[\x00-\x1f\x7f]/g,'');if(n.length<3||n.length>24)throw new AccountError(400,friendly.INVALID_NICKNAME);return n;}
-export function createAccounts({url=process.env.SUPABASE_URL,key=process.env.SUPABASE_PUBLISHABLE_KEY,secure=Boolean(process.env.RENDER),fetchImpl=fetch}={}){
+export function createAccounts({url=process.env.SUPABASE_URL,key=process.env.SUPABASE_PUBLISHABLE_KEY,secure=secureCookies(),fetchImpl=fetch}={}){
  const configured=Boolean(url&&key);const refreshes=new Map(),revoked=new Map();
  if(configured&&new URL(url).protocol!=='https:')throw Error('SUPABASE_URL must use HTTPS');
  function cookies(res,tokens){const old=res.getHeader('Set-Cookie')||[];const values=Array.isArray(old)?old:[old];const tail='; HttpOnly; SameSite=Lax; Path=/api'+(secure?'; Secure':'');for(const [name,value,age]of [['xa_access',tokens?.access_token,tokens?Math.min(tokens.expires_in||3600,3600):0],['xa_refresh',tokens?.refresh_token,tokens?2592000:0]])values.push(name+'='+encodeURIComponent(value||'')+'; Max-Age='+age+tail);res.setHeader('Set-Cookie',values);}
@@ -54,3 +55,4 @@ export function createAccounts({url=process.env.SUPABASE_URL,key=process.env.SUP
  async function requireAdmin(req,res){if(!configured)throw new AccountError(503,'Tài khoản chưa kết nối.');const ctx=await context(req,res);if(!ctx.user.email_confirmed_at||ctx.user.app_metadata?.role!=='admin')throw new AccountError(403,'Chỉ tài khoản admin được dùng chức năng này.');return ctx.user.id;}
  return {configured,handle,requireAdmin};
 }
+

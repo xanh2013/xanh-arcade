@@ -1,3 +1,4 @@
+import {secureCookies} from './runtime-config.mjs';
 import {createShooterRooms,RoomError} from './shooter-rooms.mjs';
 const shooter=createShooterRooms();
 import http from 'node:http';
@@ -50,7 +51,7 @@ if(/^\/api\/(auth|shop)\//.test(path)){
  try{send(res,200,await accounts.handle(action,data,req,res));}catch(e){if(e instanceof AccountError){send(res,e.status,{error:e.message});return;}throw e;}return;
 }
 const cookie=/(?:^|;\s*)xa_session=([^;]+)/.exec(req.headers.cookie||'')?.[1];let s=sessions.get(cookie);
-if(!s){if(sessions.size>=1500){send(res,503,{error:'Sảnh đang đầy, bạn thử lại sau nhé.'});return;}const id=randomUUID();s={id,name:'Người chơi '+randomBytes(2).toString('hex').toUpperCase(),room:null,ready:false,streams:new Set(),last:Date.now()};sessions.set(id,s);res.setHeader('Set-Cookie','xa_session='+id+'; HttpOnly; SameSite=Lax; Path=/; Max-Age=86400'+(process.env.RENDER?'; Secure':''));}
+if(!s){if(sessions.size>=1500){send(res,503,{error:'Sảnh đang đầy, bạn thử lại sau nhé.'});return;}const id=randomUUID();s={id,name:'Người chơi '+randomBytes(2).toString('hex').toUpperCase(),room:null,ready:false,streams:new Set(),last:Date.now()};sessions.set(id,s);res.setHeader('Set-Cookie','xa_session='+id+'; HttpOnly; SameSite=Lax; Path=/; Max-Age=86400'+(secureCookies()?'; Secure':''));}
 s.last=Date.now();
 if(path.startsWith('/api/shooter/')){
 const op=path.slice('/api/shooter/'.length);try{
@@ -101,5 +102,6 @@ process.on('uncaughtException',e=>{console.error('Fatal error',e);process.exit(1
 let closing=false;const shutdown=()=>{if(closing)return;closing=true;console.log('Shutting down');server.close(()=>process.exit(0));server.closeAllConnections?.();setTimeout(()=>process.exit(0),8000).unref();};
 process.on('SIGTERM',shutdown);process.on('SIGINT',shutdown);
 server.listen(port,'0.0.0.0',()=>console.log('Xanh Arcade listening on '+port));
+
 
 
