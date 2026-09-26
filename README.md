@@ -1,3 +1,5 @@
+> **Hosting hiện tại: Render (quyết định ngày 26/09/2026).** Tiếp tục dùng service `xanh-arcade` tại https://xanh-arcade.onrender.com/ và repository `xanh2013/xanh-arcade`, nhánh `main`. Xanh tự triển khai trên Render; trợ lý cập nhật mã trên GitHub. Hướng dẫn Koyeb/Firebase chỉ lưu để tham khảo, không phải yêu cầu chuyển host. Thay đổi ghi chú này không xác nhận một bản triển khai mới.
+
 # Xanh Arcade — Gaming Edition 2.0
 
 Vietnamese gaming hub built for Xanh, with original cinematic artwork, a charcoal/copper interface, playable arcade games and server-authoritative online caro.
