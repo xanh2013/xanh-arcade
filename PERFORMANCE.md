@@ -49,3 +49,19 @@ Sau tối ưu (run cuối 2026-09-27):
 - Toàn bộ syntax check, logic test, HTTP test, mocked UI test, rooms, resource sharing, snapshot/geometry đều qua.
 
 Các số đo CI có dao động giữa từng run; dùng để so sánh xu hướng, không phải cam kết FPS trên thiết bị thật. Loader 27/135 là số asset bắt buộc theo code path khởi động, chưa phải phép đo network sau triển khai. Render cold-start trước tối ưu khoảng 25 giây chủ yếu phụ thuộc trạng thái sleep/hosting, không thể loại bỏ hoàn toàn chỉ bằng tối ưu code.
+
+
+## P2P bandwidth sharing (Admin mini-CDN)
+
+- WebRTC DataChannel direct from Admin browser to player browser.
+- Render only carries signaling plus fallback traffic; match authority, account, shop, cookies and tokens remain on Render/Supabase.
+- Eligible heavy static group: Fortnite assets plus cover/background files, about 2.61 MiB raw in this revision (~89.7% of the repo's measured user-facing static asset bytes used in the audit).
+- Fortnite JSON and sprites try P2P first; homepage covers and Robot/Breakout backgrounds do the same.
+- If no Admin donor is available, the client backs off and uses Render normally. If ICE/DataChannel negotiation fails, it also falls back to Render.
+- Admin keeps a versioned Cache Storage copy. A cache miss may consume Render bandwidth once; later P2P sends reuse the cached copy.
+- Dashboard counters:
+  - servedBytes: bytes sent directly Admin -> players.
+  - originBytes: raw bytes fetched by Admin on P2P Cache Storage misses.
+  - savedBytes = max(0, servedBytes - originBytes), shown as an estimate rather than billing-grade Render usage.
+- Signaling uses an 18-second long poll while idle, woken immediately by a new client or ICE signal, to avoid wasting quota on frequent polling.
+- No TURN relay is configured on Render. Direct P2P uses STUN; restrictive NAT/firewall cases fall back to Render instead of relaying heavy assets through Render.
