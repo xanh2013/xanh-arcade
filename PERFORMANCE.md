@@ -15,3 +15,37 @@
 - Test logic, Worker, phòng/SSE, mô phỏng, quyền admin và DOM giả lập đều qua. Chưa đo FPS hoặc ping trên thiết bị Xanh / Render; không cam kết hết giật trên mọi máy.
 
 Triển khai: chỉ cập nhật GitHub; Xanh tự triển khai Render. Xem RESOURCE-SHARING.md để bật máy admin hỗ trợ.
+
+
+# Tối ưu sâu 2026-09-27
+
+Phạm vi: tối ưu hiệu năng nhưng giữ nguyên luật game, chức năng, API và dữ liệu người dùng.
+
+- Trang chủ chỉ tải nền Robot / Phá gạch khi game tương ứng thực sự được mở.
+- Fortnite Z không còn chặn nút chơi cho tới khi tải đủ 135 sprite. Loader khởi động chỉ chờ 27 sprite thiết yếu ở viewport khởi đầu; 108 sprite còn lại tải theo nhu cầu. Khi mở Bản đồ, các tile bản đồ được tải đầy đủ trước khi vẽ.
+- Battle và Fortnite ngừng render/HUD liên tục khi đang ở menu hoặc pause; vẫn giữ khung hình cuối và cập nhật lại khi chơi.
+- Static server dùng ETag và nén gzip bất đồng bộ theo nhu cầu, tránh gzip đồng bộ hàng loạt SVG trên event loop.
+- Rooms giữ SSE là luồng chính; polling chỉ dùng làm fallback khi SSE mất kết nối.
+- SSE Caro/shooter loại bỏ stream hỏng hoặc backlog lớn để hạn chế giữ bộ nhớ.
+- Snapshot shooter dựng actor view đầy đủ/rút gọn một lần cho mỗi trận trên mỗi nhịp publish rồi tái sử dụng cho các client; lọc gần/xa vẫn theo từng người chơi.
+- Lobby Caro và shooter tái sử dụng phần trạng thái chung trong cùng một broadcast.
+- Battle/Fortnite/Zombie giảm mảng/object tạm, quét/sort lặp và phép tính khoảng cách trùng lặp trong loop mô phỏng.
+- Network motion tái sử dụng bộ đệm restore thay vì tạo các mảng con mới mỗi frame.
+- Resource worker theo dõi open-set O(1) thay cho open.includes tuyến tính và tránh tính lại tốc độ đạn.
+- Trang tài khoản tải auth state và catalog song song; homepage/account cache các DOM node tĩnh.
+- Thêm GitHub Actions riêng cho nhánh tối ưu: syntax check, toàn bộ test và benchmark Zombie.
+
+## Kết quả GitHub Actions cùng loại runner
+
+Baseline đầu nhánh:
+- Battle simulation: 2483 ms.
+- Fortnite simulation: 621 ms.
+- Zombie benchmark p95: 0.843 ms.
+
+Sau tối ưu (run cuối 2026-09-27):
+- Battle simulation: 1807 ms.
+- Fortnite simulation: 350 ms.
+- Zombie benchmark p95: 0.545 ms.
+- Toàn bộ syntax check, logic test, HTTP test, mocked UI test, rooms, resource sharing, snapshot/geometry đều qua.
+
+Các số đo CI có dao động giữa từng run; dùng để so sánh xu hướng, không phải cam kết FPS trên thiết bị thật. Loader 27/135 là số asset bắt buộc theo code path khởi động, chưa phải phép đo network sau triển khai. Render cold-start trước tối ưu khoảng 25 giây chủ yếu phụ thuộc trạng thái sleep/hosting, không thể loại bỏ hoàn toàn chỉ bằng tối ưu code.
