@@ -25,8 +25,8 @@ function supply(w){
 export function prepareZombies(w,dt,blocked){
  const z=w.zombie;if(!z)return;
  w.zombiePathBudget=1;
- const survivors=w.actors.filter(a=>!a.zombie&&a.alive);
- if(!survivors.length){w.status='lost';return;}
+ let survivorCount=0;for(const actor of w.actors){if(actor.zombie)break;if(actor.alive)survivorCount++;}
+ if(!survivorCount){w.status='lost';return;}
  if(z.rest>0){z.rest=Math.max(0,z.rest-dt);if(z.rest>0)return;
   z.wave++;z.spawnLeft=8+z.wave*4+(z.survivors-1)*6;z.remaining=z.spawnLeft;z.spawnTimer=0;
   w.events.push({type:'wave',wave:z.wave});
@@ -34,7 +34,7 @@ export function prepareZombies(w,dt,blocked){
  if(!z.spawnLeft)return;
  z.spawnTimer-=dt;if(z.spawnTimer>0)return;
  const a=w.actors.find(a=>a.zombie&&!a.alive);if(!a)return;
- const target=survivors[Math.floor(w.random()*survivors.length)];let pos=null;
+ let targetIndex=Math.floor(w.random()*survivorCount),target=null;for(const actor of w.actors){if(actor.zombie)break;if(actor.alive&&targetIndex--===0){target=actor;break;}}let pos=null;
  for(let i=0;i<24;i++){const ang=w.random()*Math.PI*2,r=580+w.random()*260,x=Math.max(40,Math.min(15960,target.x+Math.cos(ang)*r)),y=Math.max(40,Math.min(15960,target.y+Math.sin(ang)*r));if(Math.hypot(x-target.x,y-target.y)>450&&!blocked(x,y,22,w.covers)){pos={x,y};break;}}
  if(!pos){z.spawnTimer=.5;return;}
  const roll=w.random(),kind=z.wave>=3&&roll<.18?'brute':z.wave>=2&&roll<.45?'runner':'walker';
@@ -48,7 +48,7 @@ export function stepZombie(w,a,dt,api){
   a.targetId=nearest?.id;a.think=.25+(a.id%5)*.04;
  }
  const target=w.actors[a.targetId];if(!target?.alive)return;
- a.goal={x:target.x,y:target.y};const dist=Math.hypot(a.x-target.x,a.y-target.y);a.angle=Math.atan2(target.y-a.y,target.x-a.x);
+ a.goal.x=target.x;a.goal.y=target.y;const dist=Math.hypot(a.x-target.x,a.y-target.y);a.angle=Math.atan2(target.y-a.y,target.x-a.x);
  if(dist<a.r+target.r+16&&api.lineClear(a,target,w)){
   if(a.cool<=0){const damage=({easy:9,normal:12,hard:16}[w.difficulty])*(a.variant==='brute'?1.8:1);api.hit(w,target,damage,a);a.cool=a.variant==='runner'?.85:1.25;a.attack=.25;}return;
  }
@@ -61,8 +61,9 @@ export function stepZombie(w,a,dt,api){
 }
 export function finishZombies(w){
  const z=w.zombie;if(!z)return;
- if(!w.actors.some(a=>!a.zombie&&a.alive)){w.status='lost';return;}
- z.remaining=z.spawnLeft+w.actors.filter(a=>a.zombie&&a.alive).length;
+ let survivors=0,liveZombies=0;for(const actor of w.actors){if(actor.zombie){if(actor.alive)liveZombies++;}else if(actor.alive)survivors++;}
+ if(!survivors){w.status='lost';return;}
+ z.remaining=z.spawnLeft+liveZombies;
  if(z.wave>0&&z.remaining===0&&z.rest<=0){if(z.wave===z.totalWaves)w.status='won';else{z.rest=15;supply(w);w.events.push({type:'resupply'});}}
 }
 
