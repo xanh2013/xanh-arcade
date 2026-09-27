@@ -33,7 +33,7 @@ files['/online.css']=['online.css','text/css; charset=utf-8'];for(const [path,fi
 const P2P_ASSET=/^\/(?:fortnite-assets\/[A-Za-z0-9_-]+\.(?:svg|json)|cover-(?:runner|blocks|caro|chess)-v2\.webp|background-(?:runner|space)-v2\.webp)$/;
 let p2pManifestPromise=null;
 function assetManifest(){return p2pManifestPromise??=Promise.all(Object.entries(files).filter(([path])=>P2P_ASSET.test(path)).map(async([path,[file,type]])=>{const raw=await readFile(new URL(file,import.meta.url));return [path,{sha256:createHash('sha256').update(raw).digest('base64url'),bytes:raw.length,type}];})).then(entries=>({version:(process.env.RENDER_GIT_COMMIT||'dev').slice(0,12),assets:Object.fromEntries(entries)}));}
-function allowP2P(id,op){const now=Date.now(),key=id+':'+op,limit=op==='admin-poll'?12:op==='client-poll'?180:120;let r=p2pRates.get(key);if(!r||now-r.at>60000){r={at:now,n:0};p2pRates.set(key,r);}return ++r.n<=limit;}
+function allowP2P(id,op){const now=Date.now(),key=id+':'+op,limit=op==='client-poll'?180:120;let r=p2pRates.get(key);if(!r||now-r.at>60000){r={at:now,n:0};p2pRates.set(key,r);}return ++r.n<=limit;}
 const games=new Set(['caro','chess','runner','blocks']);
 function send(res,status,data){res.writeHead(status,{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store'});res.end(JSON.stringify(data));}
 function roomView(r){return {code:r.code,title:r.title,game:r.game,match:r.match?{board:r.match.board,turn:r.match.turn,status:r.match.status,winner:r.match.winner,line:r.match.line,last:r.match.last}:null,members:[...r.members].map(id=>{const s=sessions.get(id);return {name:s?.name||'Người chơi',ready:s?.ready||false,host:r.host===id,role:r.match?.players.indexOf(id)===0?'X':r.match?.players.indexOf(id)===1?'O':null};})};}
