@@ -84,7 +84,7 @@ async function waitBuffered(channel){
 export function createAdminAssetDonor(adminApi,onState=()=>{},onStats=()=>{}){
  let running=false,generation=0,timer=null,peers=new Map(),cachePromise=null;
  const stats={servedBytes:0,originBytes:0,files:0,cacheHits:0};
- const getCache=()=>cachePromise??=(typeof caches!=='undefined'?caches.open('xanh-p2p-assets-v1'):Promise.resolve(null));
+ const getCache=()=>cachePromise??=(typeof caches!=='undefined'?caches.open('xanh-p2p-assets-20260927-v2'):Promise.resolve(null));
  async function sendAsset(channel,msg){
   if(!safePath(msg.path)||!msg.id)return;
   try{
