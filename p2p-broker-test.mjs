@@ -7,6 +7,7 @@ assert.equal(b.publicState().available,false);
 assert.equal(b.connect('client-a').enabled,false);
 assert.equal(b.adminRegister('admin-a',true).enabled,true);
 assert.equal(b.publicState().available,true);
+const waiting=b.adminWait('admin-a',null,1000);await new Promise(r=>setTimeout(r,5));const wakeLink=b.connect('client-wake');const woke=await waiting;assert.equal(woke.events.some(e=>e.pairId===wakeLink.pairId),true);b.disconnect('client','client-wake',{pairId:wakeLink.pairId});
 const link=b.connect('client-a');assert.equal(link.enabled,true);assert.ok(link.pairId);
 let admin=b.adminPoll('admin-a');assert.equal(admin.events.length,1);assert.equal(admin.events[0].type,'connect');assert.equal(admin.events[0].pairId,link.pairId);
 assert.equal(b.signal('admin','admin-a',{pairId:link.pairId,signal:{description:{type:'offer',sdp:'x'}}}).ok,true);
