@@ -71,7 +71,7 @@ export async function loadAssetImage(img,path){
 }
 export async function hydrateAssetImages(root=document){
  const images=[...root.querySelectorAll('img[data-asset-src]')];
- await Promise.all(images.map(async img=>{const path=img.dataset.assetSrc;if(!safePath(path))return;await loadAssetImage(img,path);}));
+ await Promise.all(images.map(async img=>{const path=img.dataset.assetSrc;if(!safePath(path))return;await loadAssetImage(img,path);delete img.dataset.assetSrc;}));
 }
 export function warmP2PAssets(){openClient().catch(()=>{});}
 
