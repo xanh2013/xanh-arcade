@@ -11,7 +11,7 @@ $('#auth-form').onsubmit=e=>{e.preventDefault();const f=e.currentTarget;run(f.qu
 $('#logout').onclick=e=>run(e.currentTarget,async()=>{donor.stop();await api('auth/logout',{});account=null;render();status('Đã đăng xuất.');});
 $('#daily').onclick=e=>run(e.currentTarget,async()=>{account=(await api('shop/daily',{})).account;render();status('Đã nhận 75 xu vào tài khoản.');});
 $('#rename').onsubmit=e=>{e.preventDefault();const f=e.currentTarget;run(f.querySelector('button'),async()=>{account=(await api('auth/profile',{nickname:f.elements.nickname.value})).account;render();status('Đã lưu biệt danh.');});};
-try{const me=await api('auth/me');if(!me.configured){status('Tạo nick đang chờ kích hoạt máy chủ. Bạn vẫn có thể chơi Battle BETA và dùng shop chơi khách.');}else{catalog=(await api('shop/catalog')).catalog;account=me.account;render();status(account?'Nick đã được kết nối.':confirmationReturned?'Email đã được xác nhận. Đăng nhập để vào nick.':'Đăng nhập hoặc tạo nick để lưu hồ sơ và đồ trực tuyến.');}}catch(e){status(e.message);}
+try{const [me,shop]=await Promise.all([api('auth/me'),api('shop/catalog')]);catalog=shop.catalog||[];if(!me.configured){status('Tạo nick đang chờ kích hoạt máy chủ. Bạn vẫn có thể chơi Battle BETA và dùng shop chơi khách.');}else{account=me.account;render();status(account?'Nick đã được kết nối.':confirmationReturned?'Email đã được xác nhận. Đăng nhập để vào nick.':'Đăng nhập hoặc tạo nick để lưu hồ sơ và đồ trực tuyến.');}}catch(e){status(e.message);}
 
 for(const [id,enabled] of [['admin-enable',true],['admin-disable',false]])$( '#'+id).onclick=e=>run(e.currentTarget,async()=>{const r=await api('shooter/admin-boost',{enabled});status(r.adminBoostActive?'Đã bật hỗ trợ tài nguyên.':'Đã tắt hỗ trợ tài nguyên.');});
 
