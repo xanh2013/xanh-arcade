@@ -46,6 +46,7 @@ export function createDutyCycleScheduler({dutyCycle=RESOURCE_DUTY_CYCLE,periodMs
 
 const performanceNow=()=>globalThis.performance?.now?.()??Date.now();
 const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
+const PATH_DIRS=[[1,0],[-1,0],[0,1],[0,-1]];
 const cellIndex=(x,y,width,cell)=>Math.max(0,Math.min(width-1,Math.floor(x/cell)));
 
 function makeGrid(task){
@@ -66,17 +67,17 @@ function pathFor(grid,request){
  const ex=cellIndex(request.goal.x,request.goal.y,width,cell),ey=Math.max(0,Math.min(height-1,Math.floor(request.goal.y/cell)));
  const start=sy*width+sx,end=ey*width+ex;
  if(blocked[start]||blocked[end])return [];
- const open=[start],came=new Int32Array(width*height);came.fill(-1);const cost=new Float32Array(width*height);cost.fill(Infinity);cost[start]=0;
+ const open=[start],inOpen=new Uint8Array(width*height);inOpen[start]=1;const came=new Int32Array(width*height);came.fill(-1);const cost=new Float32Array(width*height);cost.fill(Infinity);cost[start]=0;
  const score=new Float32Array(width*height);score.fill(Infinity);score[start]=Math.abs(sx-ex)+Math.abs(sy-ey);const closed=new Uint8Array(width*height);
  let last=start,iterations=0;
  while(open.length&&iterations++<900){
   let best=0;for(let i=1;i<open.length;i++)if(score[open[i]]<score[open[best]])best=i;
-  const current=open.splice(best,1)[0];last=current;if(current===end)break;closed[current]=1;
+  const current=open.splice(best,1)[0];inOpen[current]=0;last=current;if(current===end)break;closed[current]=1;
   const x=current%width,y=(current/width)|0;
-  for(const [dx,dy]of [[1,0],[-1,0],[0,1],[0,-1]]){
+  for(const [dx,dy]of PATH_DIRS){
    const nx=x+dx,ny=y+dy;if(nx<0||ny<0||nx>=width||ny>=height)continue;const next=ny*width+nx;
    if(blocked[next]||closed[next])continue;const nextCost=cost[current]+1;
-   if(nextCost<cost[next]){came[next]=current;cost[next]=nextCost;score[next]=nextCost+Math.abs(nx-ex)+Math.abs(ny-ey);if(!open.includes(next))open.push(next);}
+   if(nextCost<cost[next]){came[next]=current;cost[next]=nextCost;score[next]=nextCost+Math.abs(nx-ex)+Math.abs(ny-ey);if(!inOpen[next]){open.push(next);inOpen[next]=1;}}
   }
  }
  const path=[];while(last!==start&&came[last]>=0){path.push({x:(last%width+.5)*cell,y:(Math.floor(last/width)+.5)*cell});last=came[last];}
@@ -89,8 +90,8 @@ function computeBotPaths(task){
 }
 
 function segmentDistance(point,bullet){
- const length=Math.max(1,Math.hypot(bullet.vx,bullet.vy)*Math.min(.1,bullet.dt||.05));
- const dx=bullet.vx/Math.max(1,Math.hypot(bullet.vx,bullet.vy))*length,dy=bullet.vy/Math.max(1,Math.hypot(bullet.vx,bullet.vy))*length;
+ const speed=Math.max(1,Math.hypot(bullet.vx,bullet.vy)),length=Math.max(1,speed*Math.min(.1,bullet.dt||.05));
+ const dx=bullet.vx/speed*length,dy=bullet.vy/speed*length;
  const px=point.x-bullet.x,py=point.y-bullet.y,den=dx*dx+dy*dy||1;
  const t=clamp((px*dx+py*dy)/den,0,1),x=bullet.x+dx*t,y=bullet.y+dy*t;
  return Math.hypot(point.x-x,point.y-y);
