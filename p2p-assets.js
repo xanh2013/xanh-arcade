@@ -93,7 +93,7 @@ async function waitBuffered(channel){
 }
 export function createAdminAssetDonor(adminApi,onState=()=>{},onStats=()=>{}){
  let running=false,generation=0,timer=null,peers=new Map(),cachePromise=null;
- const stats={servedBytes:0,originBytes:0,files:0,cacheHits:0};
+ const stats={servedBytes:0,originBytes:0,files:0,cacheHits:0};let remoteStats={clients:0,maxClients:0};
  const getCache=()=>cachePromise??=(typeof caches!=='undefined'?getManifest().then(m=>caches.open('xanh-p2p-assets-'+String(m.version||'v1'))):Promise.resolve(null));
  async function sendAsset(channel,msg){
   if(!safePath(msg.path)||!msg.id)return;
@@ -107,7 +107,7 @@ export function createAdminAssetDonor(adminApi,onState=()=>{},onStats=()=>{}){
    channel.send(JSON.stringify({type:'asset-start',id:msg.id,size:blob.size,mime:blob.type}));
    const buffer=await blob.arrayBuffer(),chunk=16384;
    for(let offset=0;offset<buffer.byteLength;offset+=chunk){await waitBuffered(channel);channel.send(buffer.slice(offset,Math.min(buffer.byteLength,offset+chunk)));}
-   channel.send(JSON.stringify({type:'asset-end',id:msg.id}));stats.servedBytes+=blob.size;stats.files++;onStats({...stats,savedBytes:Math.max(0,stats.servedBytes-stats.originBytes)});
+   channel.send(JSON.stringify({type:'asset-end',id:msg.id}));stats.servedBytes+=blob.size;stats.files++;onStats({...stats,...remoteStats,savedBytes:Math.max(0,stats.servedBytes-stats.originBytes)});
   }catch{try{channel.send(JSON.stringify({type:'asset-error',id:msg.id}));}catch{}}
  }
  function closePeer(pairId){const p=peers.get(pairId);if(!p)return;try{p.channel?.close();p.pc.close();}catch{}peers.delete(pairId);}
@@ -128,7 +128,7 @@ export function createAdminAssetDonor(adminApi,onState=()=>{},onStats=()=>{}){
     if(event.type==='connect')await createPeer(event.pairId,g);
     else if(event.type==='signal'){const p=peers.get(event.pairId);if(!p)continue;const s=event.signal;if(s.description)await p.pc.setRemoteDescription(s.description);else if(s.candidate)try{await p.pc.addIceCandidate(s.candidate);}catch{}}
    }
-   onStats({...stats,...r.stats,savedBytes:Math.max(0,stats.servedBytes-stats.originBytes)});
+   remoteStats={clients:r.stats?.clients||0,maxClients:r.stats?.maxClients||0};onStats({...stats,...remoteStats,savedBytes:Math.max(0,stats.servedBytes-stats.originBytes)});
   }catch(error){if(running)onState('P2P đang nối lại: '+error.message,true);}
   finally{if(running&&g===generation)timer=setTimeout(()=>poll(g),25);}
  }
