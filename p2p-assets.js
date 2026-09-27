@@ -3,6 +3,16 @@ const ICE={iceServers:[{urls:'stun:stun.l.google.com:19302'}]};
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 const api=async(op,data={})=>{const r=await fetch('/api/p2p/'+op,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data),signal:AbortSignal.timeout(5000)});let value={};try{value=await r.json();}catch{}if(!r.ok)throw Error(value.error||'P2P signaling failed');return value;};
 const safePath=path=>typeof path==='string'&&SAFE_ASSET.test(path);
+let manifestPromise=null;
+const getManifest=()=>manifestPromise??=api('manifest').catch(()=>({assets:{},version:'unknown'}));
+function base64url(bytes){let s='';for(const b of bytes)s+=String.fromCharCode(b);return btoa(s).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');}
+async function verifyAsset(path,blob){
+ const meta=(await getManifest()).assets?.[path];if(!meta)return false;
+ if(meta.bytes!==blob.size)return false;
+ if(!globalThis.crypto?.subtle)return true;
+ const hash=await crypto.subtle.digest('SHA-256',await blob.arrayBuffer());
+ return base64url(new Uint8Array(hash))===meta.sha256;
+}
 
 let clientPromise=null,clientChannel=null,clientPair=null,currentTransfer=null,clientPeer=null,clientUnavailableUntil=0;const assetMemory=new Map();
 async function signalClient(signal){if(clientPair)await api('client-signal',{pairId:clientPair,signal});}
@@ -61,7 +71,7 @@ export function fetchAssetBlob(path){
    try{channel.send(JSON.stringify({type:'get',id,path}));}catch{clearTimeout(timer);currentTransfer=null;resolve(null);}
   });
  };
- const result=queue.then(work,work).then(blob=>{if(blob)assetMemory.set(path,blob);return blob;});queue=result.catch(()=>null);return result;
+ const result=queue.then(work,work).then(async blob=>{if(blob&&!await verifyAsset(path,blob))return null;if(blob)assetMemory.set(path,blob);return blob;});queue=result.catch(()=>null);return result;
 }
 export async function assetObjectURL(path){
  const blob=await fetchAssetBlob(path);return blob?URL.createObjectURL(blob):path;
@@ -84,13 +94,14 @@ async function waitBuffered(channel){
 export function createAdminAssetDonor(adminApi,onState=()=>{},onStats=()=>{}){
  let running=false,generation=0,timer=null,peers=new Map(),cachePromise=null;
  const stats={servedBytes:0,originBytes:0,files:0,cacheHits:0};
- const getCache=()=>cachePromise??=(typeof caches!=='undefined'?caches.open('xanh-p2p-assets-20260927-v2'):Promise.resolve(null));
+ const getCache=()=>cachePromise??=(typeof caches!=='undefined'?getManifest().then(m=>caches.open('xanh-p2p-assets-'+String(m.version||'v1'))):Promise.resolve(null));
  async function sendAsset(channel,msg){
   if(!safePath(msg.path)||!msg.id)return;
   try{
    const cache=await getCache();let response=cache?await cache.match(msg.path):null,wasCached=Boolean(response);
    if(wasCached){stats.cacheHits++;}else{response=await fetch(msg.path,{cache:'force-cache',signal:AbortSignal.timeout(15000)});if(!response.ok)throw Error();if(cache)await cache.put(msg.path,response.clone());}
    const blob=await response.blob();
+   if(!await verifyAsset(msg.path,blob)){if(cache)await cache.delete(msg.path);throw Error('Asset integrity mismatch');}
    // A cache miss consumes Render bandwidth once; future clients reuse the cached copy.
    if(!wasCached)stats.originBytes+=blob.size;
    channel.send(JSON.stringify({type:'asset-start',id:msg.id,size:blob.size,mime:blob.type}));
