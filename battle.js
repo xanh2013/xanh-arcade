@@ -108,5 +108,7 @@ $('#game-mode').value=new URLSearchParams(location.search).get('mode')==='zombie
 $('#game-mode').onchange=()=>{$('#mode-tag').textContent=$('#game-mode').value==='zombie'?'ĐẠI DỊCH · 8 ĐỢT · SOLO / ĐỘI 4':'ĐỜI ĐẦU · 24 BOT · ĐẢO THANH VÂN';$('#intro').textContent=$('#game-mode').value==='zombie'?'ĐẠI DỊCH ZOMBIE · 8 đợt · 3 loại zombie. Solo tại đây hoặc tạo phòng đội 4. Nhận đạn và hồi máu giữa các đợt; 20 súng mới quanh điểm xuất phát.':'Nhảy dù xuống đảo, nhặt súng và sống sót đến cuối trận.';};
 if($('#game-mode').value==='zombie')$('#game-mode').onchange();
 $('#armory').onclick=()=>{const list=$('#weapon-list');if(!list.childElementCount)for(const s of Object.values(NEW_WEAPONS)){const card=document.createElement('article'),name=document.createElement('h3'),detail=document.createElement('p');name.textContent=s.name;detail.textContent=s.kind+' · '+s.mag+' viên/băng · '+s.damage+(s.pellets>1?' × '+s.pellets:'')+' sát thương · '+s.range+' tầm bắn · '+s.reload+'s nạp';card.append(name,detail);list.append(card);}openDialog('weapon-dialog');};
+$('#fullscreen').onclick=async()=>{try{if(document.fullscreenElement)await document.exitFullscreen();else await document.documentElement.requestFullscreen();}catch{notice('Trình duyệt chưa cho phép toàn màn hình.');}};
+document.addEventListener('fullscreenchange',()=>{$('#fullscreen').textContent=document.fullscreenElement?'⛶ Thoát toàn màn hình':'⛶ Toàn màn hình';});
 window.addEventListener('visibilitychange',()=>{last=0;accumulator=0;frameMeter.reset();});
 
