@@ -2,6 +2,7 @@ import {openGame,updateOnline} from './games.js';
 import {hydrateAssetImages,warmP2PAssets} from './p2p-assets.js';
 const uiCache=new Map(),$=s=>{if(!uiCache.has(s))uiCache.set(s,document.querySelector(s));return uiCache.get(s);}, grid=$('#game-grid'), modal=$('#modal');
 warmP2PAssets();
+hydrateAssetImages(document).catch(()=>{});
 const games=[{id:'fortnite',name:'Fortnite Z',category:'arcade',tag:'NATIVE BETA',players:'Solo / Online · 25 vị trí',description:'Đảo gốc của bản remix: 18 loại súng, rương, chặt cây, xây tường và xe.'},{id:'battle',name:'Game bắn nhau — BETA',category:'arcade',tag:'BETA 0.3',players:'Solo / Online · 25 vị trí',description:'Nhảy dù, nhặt súng, ba lô và 24 bot chiến thuật.'},{id:'runner',name:'Robot phiêu lưu',category:'arcade',tag:'ARCADE',players:'1 người',description:'Băng qua thành cổ, thu thập xu.'},{id:'blocks',name:'Phá gạch quỹ đạo',category:'arcade',tag:'ARCADE',players:'1 người',description:'Ba màn chơi giữa không gian.'},{id:'caro',name:'Cờ caro',category:'board',tag:'ĐẤU TRÍ',players:'2 người',description:'Một hàng cờ, ngàn nước tính.'},{id:'chess',name:'Cờ vua',category:'board',tag:'CHIẾN THUẬT',players:'2 người',description:'Nước đi nhỏ. Thế cờ lớn.'}];
 let favorites=[];try{const saved=JSON.parse(localStorage.getItem('xa_favorites')||'[]');if(Array.isArray(saved))favorites=saved.filter(x=>games.some(g=>g.id===x));}catch{}
 let view='all',filter='all',current=null,connected=false,modalMode='',toastTimer;
