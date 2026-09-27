@@ -1,9 +1,10 @@
 import {getEquipment} from './beta-shop.js';
+import {loadAssetImage} from './p2p-assets.js';
 import {winningLine,overlaps,brickHit} from './game-rules.js';
 const $=s=>document.querySelector(s),dialog=$('#game-modal'),canvas=$('#game-canvas'),ctx=canvas.getContext('2d');
 let mode=null,online=false,roomState=null,sendMove=null,raf=0,last=0,elapsed=0,running=false,paused=false,ended=false,sound=false,audio=null,keys=new Set(),particles=[],game={},board=[],turn='X',line=[],lastCell=null,caroStatus='playing',pending=false;
 let cosmetics={};
-const images={};function getBackground(name){let im=images[name];if(!im){im=new Image();im.src='/background-'+name+'-v2.webp';images[name]=im;}return im;}
+const images={};function getBackground(name){let im=images[name];if(!im){im=new Image();loadAssetImage(im,'/background-'+name+'-v2.webp').catch(()=>{im.src='/background-'+name+'-v2.webp';});images[name]=im;}return im;}
 function beep(freq=440,duration=.1,type='sine',end=freq){if(!sound||!audio||audio.state!=='running')return;const osc=audio.createOscillator(),gain=audio.createGain();osc.type=type;osc.frequency.setValueAtTime(freq,audio.currentTime);osc.frequency.exponentialRampToValueAtTime(Math.max(end,20),audio.currentTime+duration);gain.gain.setValueAtTime(.0001,audio.currentTime);gain.gain.exponentialRampToValueAtTime(.075,audio.currentTime+.01);gain.gain.exponentialRampToValueAtTime(.0001,audio.currentTime+duration);osc.connect(gain).connect(audio.destination);osc.start();osc.stop(audio.currentTime+duration+.02);}
 async function unlockSound(){if(!sound)return;try{audio??=new(window.AudioContext||window.webkitAudioContext)();await audio.resume();}catch{sound=false;updateSound();}}
 function updateSound(){$('#sound-button').textContent='♫ Âm thanh: '+(sound?'Bật':'Tắt');$('#sound-button').setAttribute('aria-pressed',String(sound));}
