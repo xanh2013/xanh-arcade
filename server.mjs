@@ -6,7 +6,9 @@ import {createAccounts,AccountError} from './accounts.mjs';
 const accounts=createAccounts(),authRates=new Map();
 import {winningLine} from './game-rules.js';
 import {readFile,readdir} from 'node:fs/promises';
-import {gzipSync} from 'node:zlib';
+import {gzip} from 'node:zlib';
+import {promisify} from 'node:util';
+const gzipAsync=promisify(gzip);
 const staticCache=new Map();
 import {randomUUID,randomBytes,createHash} from 'node:crypto';
 const port=Number(process.env.PORT)||8000, sessions=new Map(), rooms=new Map(), limits=new Map();
@@ -31,12 +33,12 @@ const games=new Set(['caro','chess','runner','blocks']);
 function send(res,status,data){res.writeHead(status,{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store'});res.end(JSON.stringify(data));}
 function roomView(r){return {code:r.code,title:r.title,game:r.game,match:r.match?{board:r.match.board,turn:r.match.turn,status:r.match.status,winner:r.match.winner,line:r.match.line,last:r.match.last}:null,members:[...r.members].map(id=>{const s=sessions.get(id);return {name:s?.name||'Người chơi',ready:s?.ready||false,host:r.host===id,role:r.match?.players.indexOf(id)===0?'X':r.match?.players.indexOf(id)===1?'O':null};})};}
 function state(s){return {online:[...sessions.values()].filter(x=>x.streams.size).length,rooms:[...rooms.values()].map(r=>({code:r.code,title:r.title,game:r.game,count:r.members.size})),me:{name:s.name,ready:s.ready,room:s.room,host:rooms.get(s.room)?.host===s.id,role:rooms.get(s.room)?.match?.players.indexOf(s.id)===0?'X':rooms.get(s.room)?.match?.players.indexOf(s.id)===1?'O':null},room:s.room&&rooms.has(s.room)?roomView(rooms.get(s.room)):null};}
-function broadcast(){for(const s of sessions.values()){const message='data: '+JSON.stringify(state(s))+'\n\n';for(const stream of s.streams)stream.write(message);}}
+function broadcast(){for(const s of sessions.values()){const message='data: '+JSON.stringify(state(s))+'\n\n';for(const stream of s.streams){if(stream.destroyed){s.streams.delete(stream);continue;}if(stream.writableLength>131072){stream.destroy();s.streams.delete(stream);continue;}stream.write(message);}}}
 function leave(s){const r=rooms.get(s.room);if(r){if(r.match?.status==='playing'&&r.match.players.includes(s.id)){r.match.status='aborted';for(const id of r.members){const m=sessions.get(id);if(m)m.ready=false;}}r.members.delete(s.id);if(!r.members.size)rooms.delete(r.code);else if(r.host===s.id)r.host=[...r.members][0];}s.room=null;s.ready=false;}
 const server=http.createServer(async(req,res)=>{try{
 res.setHeader('X-Content-Type-Options','nosniff');res.setHeader('Referrer-Policy','same-origin');res.setHeader('X-Frame-Options','DENY');res.setHeader('Content-Security-Policy',"default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; base-uri 'none'; frame-ancestors 'none'");
 const path=new URL(req.url,'http://localhost').pathname;
-if(req.method==='GET'&&files[path]){const [file,type]=files[path];let cached=staticCache.get(file);if(!cached){const raw=await readFile(new URL(file,import.meta.url));cached={raw,gzip:/text|json|svg/.test(type)&&raw.length>1024?gzipSync(raw):null,etag:'"'+createHash('sha1').update(raw).digest('base64url')+'"'};staticCache.set(file,cached);}const zipped=cached.gzip&&/\bgzip\b/.test(req.headers['accept-encoding']||'');const common={'Cache-Control':'no-cache','ETag':cached.etag,'Vary':'Accept-Encoding'};if(req.headers['if-none-match']===cached.etag){res.writeHead(304,common);res.end();return;}res.writeHead(200,{'Content-Type':type,...common,...(zipped?{'Content-Encoding':'gzip'}:{})});res.end(zipped?cached.gzip:cached.raw);return;}
+if(req.method==='GET'&&files[path]){const [file,type]=files[path];let cached=staticCache.get(file);if(!cached){const raw=await readFile(new URL(file,import.meta.url));cached={raw,gzip:null,gzipPromise:null,compressible:/text|json|svg/.test(type)&&raw.length>1024,etag:'"'+createHash('sha1').update(raw).digest('base64url')+'"'};staticCache.set(file,cached);}const wantsGzip=cached.compressible&&/\bgzip\b/.test(req.headers['accept-encoding']||'');const common={'Cache-Control':'no-cache','ETag':cached.etag,'Vary':'Accept-Encoding'};if(req.headers['if-none-match']===cached.etag){res.writeHead(304,common);res.end();return;}let body=cached.raw,zipped=false;if(wantsGzip){if(!cached.gzip){cached.gzipPromise??=gzipAsync(cached.raw).then(value=>cached.gzip=value).finally(()=>cached.gzipPromise=null);await cached.gzipPromise;}body=cached.gzip;zipped=true;}res.writeHead(200,{'Content-Type':type,...common,...(zipped?{'Content-Encoding':'gzip'}:{})});res.end(body);return;}
 if(path==='/health'){send(res,200,{ok:true,version:'2.5.0-beta'});return;}
 if(!path.startsWith('/api/')){send(res,404,{error:'Không tìm thấy trang.'});return;}
 if(req.method==='POST'&&(!req.headers.origin||new URL(req.headers.origin).host!==req.headers.host)){send(res,403,{error:'Yêu cầu không hợp lệ.'});return;}
@@ -89,7 +91,7 @@ else if(path==='/api/ready'){if(rooms.get(s.room)?.match?.status==='playing'){se
 else{send(res,404,{error:'Không tìm thấy thao tác.'});return;}
 send(res,200,state(s));broadcast();
 }catch(error){console.error(error.message);if(!res.headersSent)send(res,500,{error:'Có lỗi kết nối. Bạn thử lại nhé.'});else res.end();}});
-setInterval(()=>{const now=Date.now();let changed=false;for(const [id,s]of sessions){for(const stream of s.streams)stream.write(': heartbeat\n\n');if(!s.streams.size&&now-s.last>120000){leave(s);sessions.delete(id);changed=true;}}for(const [ip,r]of limits)if(now-r.at>60000)limits.delete(ip);if(changed)broadcast();},20000).unref();
+setInterval(()=>{const now=Date.now();let changed=false;for(const [id,s]of sessions){for(const stream of s.streams){if(stream.destroyed){s.streams.delete(stream);continue;}if(stream.writableLength>131072){stream.destroy();s.streams.delete(stream);continue;}stream.write(': heartbeat\n\n');}if(!s.streams.size&&now-s.last>120000){leave(s);sessions.delete(id);changed=true;}}for(const [ip,r]of limits)if(now-r.at>60000)limits.delete(ip);if(changed)broadcast();},20000).unref();
 setInterval(()=>shooter.tick(.05),50).unref();
 setInterval(()=>shooter.publish(),100).unref();
 setInterval(()=>shooter.cleanup(),20000).unref();
