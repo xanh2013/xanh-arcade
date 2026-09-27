@@ -86,13 +86,10 @@ export function createAdminAssetDonor(adminApi,onState=()=>{},onStats=()=>{}){
  async function sendAsset(channel,msg){
   if(!safePath(msg.path)||!msg.id)return;
   try{
-   const cache=await getCache();let response=cache?await cache.match(msg.path):null;
-   if(response){stats.cacheHits++;}else{response=await fetch(msg.path,{cache:'force-cache',signal:AbortSignal.timeout(15000)});if(!response.ok)throw Error();if(cache)await cache.put(msg.path,response.clone());}
-   const blob=await response.blob();if(!response.headers.get('x-p2p-cache-hit')&&!stats.cacheHits){} 
-   if(!(cache&&await cache.match(msg.path))){} 
-   if(response.url&&response.url.startsWith(location.origin)&&stats.cacheHits===0){}
+   const cache=await getCache();let response=cache?await cache.match(msg.path):null,wasCached=Boolean(response);
+   if(wasCached){stats.cacheHits++;}else{response=await fetch(msg.path,{cache:'force-cache',signal:AbortSignal.timeout(15000)});if(!response.ok)throw Error();if(cache)await cache.put(msg.path,response.clone());}
+   const blob=await response.blob();
    // A cache miss consumes Render bandwidth once; future clients reuse the cached copy.
-   const wasCached=Boolean(await (await getCache())?.match(msg.path));
    if(!wasCached)stats.originBytes+=blob.size;
    channel.send(JSON.stringify({type:'asset-start',id:msg.id,size:blob.size,mime:blob.type}));
    const buffer=await blob.arrayBuffer(),chunk=16384;
