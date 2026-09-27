@@ -113,10 +113,10 @@ export function createAdminAssetDonor(adminApi,onState=()=>{},onStats=()=>{}){
  function closePeer(pairId){const p=peers.get(pairId);if(!p)return;try{p.channel?.close();p.pc.close();}catch{}peers.delete(pairId);}
  async function createPeer(pairId,g){
   if(!running||g!==generation||typeof RTCPeerConnection==='undefined')return;
-  closePeer(pairId);const pc=new RTCPeerConnection(ICE),channel=pc.createDataChannel('xanh-assets',{ordered:true});peers.set(pairId,{pc,channel});
+  closePeer(pairId);const pc=new RTCPeerConnection(ICE),channel=pc.createDataChannel('xanh-assets',{ordered:true});peers.set(pairId,{pc,channel,sendQueue:Promise.resolve()});
   channel.onopen=()=>onState('P2P đang phục vụ '+[...peers.values()].filter(p=>p.channel.readyState==='open').length+' máy.',true);
   channel.onclose=()=>closePeer(pairId);
-  channel.onmessage=e=>{if(typeof e.data!=='string')return;let msg;try{msg=JSON.parse(e.data);}catch{return;}if(msg.type==='get')sendAsset(channel,msg);};
+  channel.onmessage=e=>{if(typeof e.data!=='string'||e.data.length>512)return;let msg;try{msg=JSON.parse(e.data);}catch{return;}if(msg.type==='get'){const peer=peers.get(pairId);if(peer)peer.sendQueue=peer.sendQueue.then(()=>sendAsset(channel,msg),()=>sendAsset(channel,msg));}};
   pc.onicecandidate=e=>{if(e.candidate)adminApi('p2p/admin-signal',{pairId,signal:{candidate:e.candidate}}).catch(()=>{});};
   const offer=await pc.createOffer();await pc.setLocalDescription(offer);await adminApi('p2p/admin-signal',{pairId,signal:{description:pc.localDescription}});
  }
