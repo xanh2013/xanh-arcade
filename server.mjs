@@ -1,14 +1,17 @@
 import {secureCookies} from './runtime-config.mjs';
 import {createShooterRooms,RoomError} from './shooter-rooms.mjs';
-const shooter=createShooterRooms();
+import {createAssetP2PBroker} from './p2p-broker.mjs';
+const shooter=createShooterRooms(),p2p=createAssetP2PBroker();
 import http from 'node:http';
 import {createAccounts,AccountError} from './accounts.mjs';
 const accounts=createAccounts(),authRates=new Map();
 import {winningLine} from './game-rules.js';
 import {readFile,readdir} from 'node:fs/promises';
-import {gzipSync} from 'node:zlib';
+import {gzip} from 'node:zlib';
+import {promisify} from 'node:util';
+const gzipAsync=promisify(gzip);
 const staticCache=new Map();
-import {randomUUID,randomBytes} from 'node:crypto';
+import {randomUUID,randomBytes,createHash} from 'node:crypto';
 const port=Number(process.env.PORT)||8000, sessions=new Map(), rooms=new Map(), limits=new Map();
 const files={'/so-do':['so-do.svg','image/svg+xml'],'/so-do.svg':['so-do.svg','image/svg+xml'],'/':['index.html','text/html; charset=utf-8'],'/app.js':['app.js','text/javascript; charset=utf-8'],'/style.css':['style.css','text/css; charset=utf-8'],'/favicon.svg':['favicon.svg','image/svg+xml']};
 for(const game of ['runner','blocks','caro','chess']) files['/cover-'+game+'-v2.webp']=['cover-'+game+'-v2.webp','image/webp'];
@@ -25,18 +28,19 @@ for(const f of ['fortnite.js','fortnite-engine.js'])files['/'+f]=[f,'text/javasc
 files['/fortnite.css']=['fortnite.css','text/css; charset=utf-8'];
 for(const f of await readdir(new URL('fortnite-assets/',import.meta.url))){if(/^[a-zA-Z0-9_-]+\.(svg|json)$/.test(f))files['/fortnite-assets/'+f]=['fortnite-assets/'+f,f.endsWith('.svg')?'image/svg+xml':'application/json; charset=utf-8'];}
 files['/rooms']=['rooms.html','text/html; charset=utf-8'];
- for(const f of ['rooms.js','shooter-client.js','network-motion.js','resource-sharing.js','resource-worker.js','resource-executor.js','admin-resource-client.js'])files['/'+f]=[f,'text/javascript; charset=utf-8'];files['/rooms.css']=['rooms.css','text/css; charset=utf-8'];
+ for(const f of ['rooms.js','shooter-client.js','network-motion.js','resource-sharing.js','resource-worker.js','resource-executor.js','admin-resource-client.js','p2p-assets.js'])files['/'+f]=[f,'text/javascript; charset=utf-8'];files['/rooms.css']=['rooms.css','text/css; charset=utf-8'];
 files['/online.css']=['online.css','text/css; charset=utf-8'];
 const games=new Set(['caro','chess','runner','blocks']);
 function send(res,status,data){res.writeHead(status,{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store'});res.end(JSON.stringify(data));}
 function roomView(r){return {code:r.code,title:r.title,game:r.game,match:r.match?{board:r.match.board,turn:r.match.turn,status:r.match.status,winner:r.match.winner,line:r.match.line,last:r.match.last}:null,members:[...r.members].map(id=>{const s=sessions.get(id);return {name:s?.name||'Người chơi',ready:s?.ready||false,host:r.host===id,role:r.match?.players.indexOf(id)===0?'X':r.match?.players.indexOf(id)===1?'O':null};})};}
-function state(s){return {online:[...sessions.values()].filter(x=>x.streams.size).length,rooms:[...rooms.values()].map(r=>({code:r.code,title:r.title,game:r.game,count:r.members.size})),me:{name:s.name,ready:s.ready,room:s.room,host:rooms.get(s.room)?.host===s.id,role:rooms.get(s.room)?.match?.players.indexOf(s.id)===0?'X':rooms.get(s.room)?.match?.players.indexOf(s.id)===1?'O':null},room:s.room&&rooms.has(s.room)?roomView(rooms.get(s.room)):null};}
-function broadcast(){for(const s of sessions.values()){const message='data: '+JSON.stringify(state(s))+'\n\n';for(const stream of s.streams)stream.write(message);}}
+function sharedLobby(){let online=0;for(const session of sessions.values())if(session.streams.size)online++;return {online,rooms:[...rooms.values()].map(r=>({code:r.code,title:r.title,game:r.game,count:r.members.size}))};}
+function state(s,shared=sharedLobby()){return {online:shared.online,rooms:shared.rooms,me:{name:s.name,ready:s.ready,room:s.room,host:rooms.get(s.room)?.host===s.id,role:rooms.get(s.room)?.match?.players.indexOf(s.id)===0?'X':rooms.get(s.room)?.match?.players.indexOf(s.id)===1?'O':null},room:s.room&&rooms.has(s.room)?roomView(rooms.get(s.room)):null};}
+function broadcast(){const shared=sharedLobby();for(const s of sessions.values()){const message='data: '+JSON.stringify(state(s,shared))+'\n\n';for(const stream of s.streams){if(stream.destroyed){s.streams.delete(stream);continue;}if(stream.writableLength>131072){stream.destroy();s.streams.delete(stream);continue;}stream.write(message);}}}
 function leave(s){const r=rooms.get(s.room);if(r){if(r.match?.status==='playing'&&r.match.players.includes(s.id)){r.match.status='aborted';for(const id of r.members){const m=sessions.get(id);if(m)m.ready=false;}}r.members.delete(s.id);if(!r.members.size)rooms.delete(r.code);else if(r.host===s.id)r.host=[...r.members][0];}s.room=null;s.ready=false;}
 const server=http.createServer(async(req,res)=>{try{
 res.setHeader('X-Content-Type-Options','nosniff');res.setHeader('Referrer-Policy','same-origin');res.setHeader('X-Frame-Options','DENY');res.setHeader('Content-Security-Policy',"default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; base-uri 'none'; frame-ancestors 'none'");
 const path=new URL(req.url,'http://localhost').pathname;
-if(req.method==='GET'&&files[path]){const [file,type]=files[path];let cached=staticCache.get(file);if(!cached){const raw=await readFile(new URL(file,import.meta.url));cached={raw,gzip:/text|json|svg/.test(type)&&raw.length>1024?gzipSync(raw):null};staticCache.set(file,cached);}const zipped=cached.gzip&&/\bgzip\b/.test(req.headers['accept-encoding']||'');res.writeHead(200,{'Content-Type':type,'Cache-Control':'no-cache','Vary':'Accept-Encoding',...(zipped?{'Content-Encoding':'gzip'}:{})});res.end(zipped?cached.gzip:cached.raw);return;}
+if(req.method==='GET'&&files[path]){const [file,type]=files[path];let cached=staticCache.get(file);if(!cached){const raw=await readFile(new URL(file,import.meta.url));cached={raw,gzip:null,gzipPromise:null,compressible:/text|json|svg/.test(type)&&raw.length>1024,etag:'"'+createHash('sha1').update(raw).digest('base64url')+'"'};staticCache.set(file,cached);}const wantsGzip=cached.compressible&&/\bgzip\b/.test(req.headers['accept-encoding']||'');const common={'Cache-Control':'no-cache','ETag':cached.etag,'Vary':'Accept-Encoding'};if(req.headers['if-none-match']===cached.etag){res.writeHead(304,common);res.end();return;}let body=cached.raw,zipped=false;if(wantsGzip){if(!cached.gzip){cached.gzipPromise??=gzipAsync(cached.raw).then(value=>cached.gzip=value).finally(()=>cached.gzipPromise=null);await cached.gzipPromise;}body=cached.gzip;zipped=true;}res.writeHead(200,{'Content-Type':type,...common,...(zipped?{'Content-Encoding':'gzip'}:{})});res.end(body);return;}
 if(path==='/health'){send(res,200,{ok:true,version:'2.5.0-beta'});return;}
 if(!path.startsWith('/api/')){send(res,404,{error:'Không tìm thấy trang.'});return;}
 if(req.method==='POST'&&(!req.headers.origin||new URL(req.headers.origin).host!==req.headers.host)){send(res,403,{error:'Yêu cầu không hợp lệ.'});return;}
@@ -53,6 +57,27 @@ if(/^\/api\/(auth|shop)\//.test(path)){
 const cookie=/(?:^|;\s*)xa_session=([^;]+)/.exec(req.headers.cookie||'')?.[1];let s=sessions.get(cookie);
 if(!s){if(sessions.size>=1500){send(res,503,{error:'Sảnh đang đầy, bạn thử lại sau nhé.'});return;}const id=randomUUID();s={id,name:'Người chơi '+randomBytes(2).toString('hex').toUpperCase(),room:null,ready:false,streams:new Set(),last:Date.now()};sessions.set(id,s);res.setHeader('Set-Cookie','xa_session='+id+'; HttpOnly; SameSite=Lax; Path=/; Max-Age=86400'+(secureCookies()?'; Secure':''));}
 s.last=Date.now();
+if(path.startsWith('/api/p2p/')){
+ const op=path.slice('/api/p2p/'.length);
+ if(req.method!=='POST'){send(res,405,{error:'Phương thức không hỗ trợ.'});return;}
+ let raw='';for await(const chunk of req){raw+=chunk;if(raw.length>16384){send(res,413,{error:'Nội dung P2P quá dài.'});return;}}
+ let d;try{d=JSON.parse(raw||'{}');}catch{send(res,400,{error:'JSON không hợp lệ.'});return;}
+ if(!d||typeof d!=='object'||Array.isArray(d)){send(res,400,{error:'Dữ liệu không hợp lệ.'});return;}
+ try{
+  if(op==='client-connect')send(res,200,p2p.connect(s.id));
+  else if(op==='client-poll')send(res,200,p2p.clientPoll(s.id,d));
+  else if(op==='client-signal')send(res,200,p2p.signal('client',s.id,d));
+  else if(op==='client-disconnect')send(res,200,p2p.disconnect('client',s.id,d));
+  else if(op.startsWith('admin-')){
+   if(op==='admin-register'){await accounts.requireAdmin(req,res);send(res,200,p2p.adminRegister(s.id,d.enabled!==false));}
+   else if(op==='admin-poll')send(res,200,await p2p.adminWait(s.id,d.stats,18000));
+   else if(op==='admin-signal')send(res,200,p2p.signal('admin',s.id,d));
+   else if(op==='admin-disconnect')send(res,200,p2p.disconnect('admin',s.id,d));
+   else send(res,404,{error:'Không tìm thấy thao tác P2P.'});
+  }else send(res,404,{error:'Không tìm thấy thao tác P2P.'});
+ }catch(e){if(e instanceof AccountError)send(res,e.status,{error:e.message});else throw e;}
+ return;
+}
 if(path.startsWith('/api/shooter/')){
 const op=path.slice('/api/shooter/'.length);try{
 if(req.method==='GET'&&op==='events'){shooter.subscribe(s,res);return;}
@@ -89,10 +114,11 @@ else if(path==='/api/ready'){if(rooms.get(s.room)?.match?.status==='playing'){se
 else{send(res,404,{error:'Không tìm thấy thao tác.'});return;}
 send(res,200,state(s));broadcast();
 }catch(error){console.error(error.message);if(!res.headersSent)send(res,500,{error:'Có lỗi kết nối. Bạn thử lại nhé.'});else res.end();}});
-setInterval(()=>{const now=Date.now();let changed=false;for(const [id,s]of sessions){for(const stream of s.streams)stream.write(': heartbeat\n\n');if(!s.streams.size&&now-s.last>120000){leave(s);sessions.delete(id);changed=true;}}for(const [ip,r]of limits)if(now-r.at>60000)limits.delete(ip);if(changed)broadcast();},20000).unref();
+setInterval(()=>{const now=Date.now();let changed=false;for(const [id,s]of sessions){for(const stream of s.streams){if(stream.destroyed){s.streams.delete(stream);continue;}if(stream.writableLength>131072){stream.destroy();s.streams.delete(stream);continue;}stream.write(': heartbeat\n\n');}if(!s.streams.size&&now-s.last>120000){leave(s);sessions.delete(id);changed=true;}}for(const [ip,r]of limits)if(now-r.at>60000)limits.delete(ip);if(changed)broadcast();},20000).unref();
 setInterval(()=>shooter.tick(.05),50).unref();
 setInterval(()=>shooter.publish(),100).unref();
 setInterval(()=>shooter.cleanup(),20000).unref();
+setInterval(()=>p2p.cleanup(),10000).unref();
 // Koyeb: keep sockets bounded, recover memory, and exit cleanly so the platform can restart.
 server.keepAliveTimeout=65000;server.headersTimeout=66000;server.requestTimeout=30000;server.maxConnections=3000;
 const MEMORY_LIMIT_MB=Number(process.env.MEMORY_LIMIT_MB)||512;
