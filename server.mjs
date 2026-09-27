@@ -7,9 +7,9 @@ import {createAccounts,AccountError} from './accounts.mjs';
 const accounts=createAccounts(),authRates=new Map();
 import {winningLine} from './game-rules.js';
 import {readFile,readdir} from 'node:fs/promises';
-import {gzip} from 'node:zlib';
+import {gzip,brotliCompress,constants as zlibConstants} from 'node:zlib';
 import {promisify} from 'node:util';
-const gzipAsync=promisify(gzip);
+const gzipAsync=promisify(gzip),brotliAsync=promisify(brotliCompress);
 const staticCache=new Map();
 import {randomUUID,randomBytes,createHash} from 'node:crypto';
 const port=Number(process.env.PORT)||8000, sessions=new Map(), rooms=new Map(), limits=new Map(),p2pRates=new Map();
@@ -29,7 +29,7 @@ files['/fortnite.css']=['fortnite.css','text/css; charset=utf-8'];
 for(const f of await readdir(new URL('fortnite-assets/',import.meta.url))){if(/^[a-zA-Z0-9_-]+\.(svg|json)$/.test(f))files['/fortnite-assets/'+f]=['fortnite-assets/'+f,f.endsWith('.svg')?'image/svg+xml':'application/json; charset=utf-8'];}
 files['/rooms']=['rooms.html','text/html; charset=utf-8'];
  for(const f of ['rooms.js','shooter-client.js','network-motion.js','resource-sharing.js','resource-worker.js','resource-executor.js','admin-resource-client.js','p2p-assets.js'])files['/'+f]=[f,'text/javascript; charset=utf-8'];files['/rooms.css']=['rooms.css','text/css; charset=utf-8'];
-files['/online.css']=['online.css','text/css; charset=utf-8'];
+files['/online.css']=['online.css','text/css; charset=utf-8'];for(const [path,file,type] of [['/pwa.js','pwa.js','text/javascript; charset=utf-8'],['/sw.js','sw.js','text/javascript; charset=utf-8'],['/manifest.webmanifest','manifest.webmanifest','application/manifest+json']])files[path]=[file,type];
 const P2P_ASSET=/^\/(?:fortnite-assets\/[A-Za-z0-9_-]+\.(?:svg|json)|cover-(?:runner|blocks|caro|chess)-v2\.webp|background-(?:runner|space)-v2\.webp)$/;
 let p2pManifestPromise=null;
 function assetManifest(){return p2pManifestPromise??=Promise.all(Object.entries(files).filter(([path])=>P2P_ASSET.test(path)).map(async([path,[file,type]])=>{const raw=await readFile(new URL(file,import.meta.url));return [path,{sha256:createHash('sha256').update(raw).digest('base64url'),bytes:raw.length,type}];})).then(entries=>({version:(process.env.RENDER_GIT_COMMIT||'dev').slice(0,12),assets:Object.fromEntries(entries)}));}
@@ -44,7 +44,7 @@ function leave(s){const r=rooms.get(s.room);if(r){if(r.match?.status==='playing'
 const server=http.createServer(async(req,res)=>{try{
 res.setHeader('X-Content-Type-Options','nosniff');res.setHeader('Referrer-Policy','same-origin');res.setHeader('X-Frame-Options','DENY');res.setHeader('Content-Security-Policy',"default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; base-uri 'none'; frame-ancestors 'none'");
 const path=new URL(req.url,'http://localhost').pathname;
-if(req.method==='GET'&&files[path]){const [file,type]=files[path];let cached=staticCache.get(file);if(!cached){const raw=await readFile(new URL(file,import.meta.url));cached={raw,gzip:null,gzipPromise:null,compressible:/text|json|svg/.test(type)&&raw.length>1024,etag:'"'+createHash('sha1').update(raw).digest('base64url')+'"'};staticCache.set(file,cached);}const wantsGzip=cached.compressible&&/\bgzip\b/.test(req.headers['accept-encoding']||'');const common={'Cache-Control':'no-cache','ETag':cached.etag,'Vary':'Accept-Encoding'};if(req.headers['if-none-match']===cached.etag){res.writeHead(304,common);res.end();return;}let body=cached.raw,zipped=false;if(wantsGzip){if(!cached.gzip){cached.gzipPromise??=gzipAsync(cached.raw).then(value=>cached.gzip=value).finally(()=>cached.gzipPromise=null);await cached.gzipPromise;}body=cached.gzip;zipped=true;}res.writeHead(200,{'Content-Type':type,...common,...(zipped?{'Content-Encoding':'gzip'}:{})});res.end(body);return;}
+if(req.method==='GET'&&files[path]){const [file,type]=files[path];let cached=staticCache.get(file);if(!cached){const raw=await readFile(new URL(file,import.meta.url));cached={raw,gzip:null,gzipPromise:null,br:null,brPromise:null,compressible:/text|json|svg|javascript|manifest/.test(type)&&raw.length>1024,etag:'"'+createHash('sha1').update(raw).digest('base64url')+'"'};staticCache.set(file,cached);}const accept=req.headers['accept-encoding']||'',wantsBr=cached.compressible&&/\bbr\b/.test(accept),wantsGzip=cached.compressible&&/\bgzip\b/.test(accept);const common={'Cache-Control':'no-cache','ETag':cached.etag,'Vary':'Accept-Encoding'};if(req.headers['if-none-match']===cached.etag){res.writeHead(304,common);res.end();return;}let body=cached.raw,encoding='';if(wantsBr){if(!cached.br){cached.brPromise??=brotliAsync(cached.raw,{params:{[zlibConstants.BROTLI_PARAM_QUALITY]:5}}).then(value=>cached.br=value).finally(()=>cached.brPromise=null);await cached.brPromise;}body=cached.br;encoding='br';}else if(wantsGzip){if(!cached.gzip){cached.gzipPromise??=gzipAsync(cached.raw).then(value=>cached.gzip=value).finally(()=>cached.gzipPromise=null);await cached.gzipPromise;}body=cached.gzip;encoding='gzip';}res.writeHead(200,{'Content-Type':type,...common,...(encoding?{'Content-Encoding':encoding}:{})});res.end(body);return;}
 if(path==='/health'){send(res,200,{ok:true,version:'2.6.0-beta',build:(process.env.RENDER_GIT_COMMIT||'local').slice(0,12),branch:process.env.RENDER_GIT_BRANCH||'local',uptimeSec:Math.floor(process.uptime()),p2p:p2p.publicState()});return;}
 if(!path.startsWith('/api/')){send(res,404,{error:'Không tìm thấy trang.'});return;}
 if(req.method==='POST'&&(!req.headers.origin||new URL(req.headers.origin).host!==req.headers.host)){send(res,403,{error:'Yêu cầu không hợp lệ.'});return;}
