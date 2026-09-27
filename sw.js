@@ -2,8 +2,8 @@ const CORE=['/','/style.css','/app.js','/games.js','/game-rules.js','/p2p-assets
 const HEAVY=/^\/(?:fortnite-assets\/|cover-|background-)/;
 const STATIC=/\.(?:js|mjs|css|svg|webp|json|webmanifest)$/;
 let buildPromise;
-async function build(){if(!buildPromise)buildPromise=fetch('/health',{cache:'no-store'}).then(r=>r.ok?r.json():null).then(v=>v?.build||'dev').catch(()=>'offline');return buildPromise;}
-async function cacheName(){return 'xanh-static-'+await build();}
+async function build(){if(!buildPromise)buildPromise=fetch('/health',{cache:'no-store'}).then(r=>r.ok?r.json():null).then(v=>v?.build||'dev').catch(()=>null);return buildPromise;}
+async function cacheName(){const id=await build();if(id)return 'xanh-static-'+id;const old=(await caches.keys()).find(name=>name.startsWith('xanh-static-'));return old||'xanh-static-offline';}
 self.addEventListener('install',event=>event.waitUntil((async()=>{const cache=await caches.open(await cacheName());await Promise.allSettled(CORE.map(url=>cache.add(new Request(url,{cache:'reload'}))));self.skipWaiting();})()));
 self.addEventListener('activate',event=>event.waitUntil((async()=>{const keep=await cacheName();for(const name of await caches.keys())if(name.startsWith('xanh-static-')&&name!==keep)await caches.delete(name);await self.clients.claim();})()));
 async function cacheFirst(request){const cache=await caches.open(await cacheName()),hit=await cache.match(request);if(hit)return hit;const response=await fetch(request);if(response.ok)cache.put(request,response.clone());return response;}
