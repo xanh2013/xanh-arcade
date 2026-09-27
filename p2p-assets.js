@@ -4,14 +4,15 @@ const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 const api=async(op,data={})=>{const r=await fetch('/api/p2p/'+op,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data),signal:AbortSignal.timeout(5000)});let value={};try{value=await r.json();}catch{}if(!r.ok)throw Error(value.error||'P2P signaling failed');return value;};
 const safePath=path=>typeof path==='string'&&SAFE_ASSET.test(path);
 
-let clientPromise=null,clientChannel=null,clientPair=null,currentTransfer=null,clientPeer=null;
+let clientPromise=null,clientChannel=null,clientPair=null,currentTransfer=null,clientPeer=null,clientUnavailableUntil=0;const assetMemory=new Map();
 async function signalClient(signal){if(clientPair)await api('client-signal',{pairId:clientPair,signal});}
 async function openClient(){
  if(clientChannel?.readyState==='open')return clientChannel;
+ if(Date.now()<clientUnavailableUntil)return null;
  if(clientPromise)return clientPromise;
  clientPromise=(async()=>{
   if(typeof RTCPeerConnection==='undefined')return null;
-  const start=await api('client-connect');if(!start.enabled)return null;clientPair=start.pairId;
+  const start=await api('client-connect');if(!start.enabled){clientUnavailableUntil=Date.now()+10000;return null;}clientPair=start.pairId;
   const pc=clientPeer=new RTCPeerConnection(ICE);
   pc.onicecandidate=e=>{if(e.candidate)signalClient({candidate:e.candidate}).catch(()=>{});};
   pc.ondatachannel=e=>{clientChannel=e.channel;setupClientChannel(clientChannel);};
@@ -31,7 +32,7 @@ async function openClient(){
   }catch{}
   try{pc.close();}catch{}clientPeer=null;clientChannel=null;
   if(clientPair)api('client-disconnect',{pairId:clientPair}).catch(()=>{});
-  clientPair=null;return null;
+  clientPair=null;clientUnavailableUntil=Date.now()+5000;return null;
  })().finally(()=>{clientPromise=null;});
  return clientPromise;
 }
@@ -51,6 +52,7 @@ function setupClientChannel(channel){
 let queue=Promise.resolve();
 export function fetchAssetBlob(path){
  if(!safePath(path))return Promise.resolve(null);
+ if(assetMemory.has(path))return Promise.resolve(assetMemory.get(path));
  const work=async()=>{
   const channel=await openClient();if(!channel||channel.readyState!=='open')return null;
   return new Promise(resolve=>{
@@ -59,7 +61,7 @@ export function fetchAssetBlob(path){
    try{channel.send(JSON.stringify({type:'get',id,path}));}catch{clearTimeout(timer);currentTransfer=null;resolve(null);}
   });
  };
- const result=queue.then(work,work);queue=result.catch(()=>null);return result;
+ const result=queue.then(work,work).then(blob=>{if(blob)assetMemory.set(path,blob);return blob;});queue=result.catch(()=>null);return result;
 }
 export async function assetObjectURL(path){
  const blob=await fetchAssetBlob(path);return blob?URL.createObjectURL(blob):path;
@@ -117,7 +119,7 @@ export function createAdminAssetDonor(adminApi,onState=()=>{},onStats=()=>{}){
    }
    onStats({...stats,...r.stats,savedBytes:Math.max(0,stats.servedBytes-stats.originBytes)});
   }catch(error){if(running)onState('P2P đang nối lại: '+error.message,true);}
-  finally{if(running&&g===generation)timer=setTimeout(()=>poll(g),350);}
+  finally{if(running&&g===generation)timer=setTimeout(()=>poll(g),25);}
  }
  function stop(notify=true){running=false;generation++;clearTimeout(timer);for(const id of [...peers.keys()])closePeer(id);if(notify)adminApi('p2p/admin-register',{enabled:false}).catch(()=>{});onState('Đã dừng chia sẻ băng thông.',false);}
  return {async start(){if(running)return;if(typeof RTCPeerConnection==='undefined'){onState('Trình duyệt không hỗ trợ WebRTC.',false);return;}running=true;generation++;const g=generation;try{const r=await adminApi('p2p/admin-register',{enabled:true});if(!r.enabled)throw Error('Không bật được P2P');onState('Đang chia sẻ băng thông P2P · chờ người chơi…',true);poll(g);}catch(e){running=false;onState(e.message,false);}},stop,getStats:()=>({...stats,savedBytes:Math.max(0,stats.servedBytes-stats.originBytes)})};
