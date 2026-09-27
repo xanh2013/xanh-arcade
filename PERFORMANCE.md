@@ -65,3 +65,47 @@ Các số đo CI có dao động giữa từng run; dùng để so sánh xu hư�
   - savedBytes = max(0, servedBytes - originBytes), shown as an estimate rather than billing-grade Render usage.
 - Signaling uses an 18-second long poll while idle, woken immediately by a new client or ICE signal, to avoid wasting quota on frequent polling.
 - No TURN relay is configured on Render. Direct P2P uses STUN; restrictive NAT/firewall cases fall back to Render instead of relaying heavy assets through Render.
+
+
+# Production hardening 2026-09-27 · v2.6.0-beta
+
+Đợt này không thay luật Battle/Fortnite/Zombie. Mục tiêu là băng thông, độ bền production, UX và khả năng kiểm chứng.
+
+- P2P asset có manifest SHA-256 do Render tạo từ file thật; client và Admin cache đều kiểm tra kích thước + hash trước khi dùng.
+- P2P giới hạn 8 client trực tiếp trên một Admin donor, giới hạn queue ICE/signaling và rate-limit endpoint. Khi đầy hoặc lỗi NAT, client fallback Render.
+- Admin có nút nạp trước cache P2P theo yêu cầu; không tự tải 2.6 MiB asset khi chưa cần.
+- WebRTC fallback rút từ 2.2 giây xuống 1.5 giây để tránh làm người chơi chờ quá lâu.
+- Server ưu tiên Brotli rồi mới gzip cho HTML/JS/CSS/SVG/JSON và vẫn giữ ETag.
+- Thêm PWA/service worker: asset nặng cache-first theo build, navigation/code network-first với cache fallback. Cache cũ vẫn dùng được khi khởi động offline.
+- Thêm manifest cài ứng dụng và nút "Cài Xanh Arcade" khi trình duyệt hỗ trợ.
+- Thêm /health v2.6.0-beta với build SHA, branch, uptime và trạng thái/capacity P2P để xác định chính xác bản production đang chạy.
+- CSP/Permissions-Policy được siết chặt; blob: chỉ mở cho ảnh P2P; camera, microphone, geolocation và payment bị tắt vì web không dùng.
+- Battle và Fortnite có nút toàn màn hình.
+- Tôn trọng prefers-reduced-motion; catalog/shop dùng content-visibility để bỏ qua render card ngoài viewport.
+- Thêm social link preview cho trang chủ.
+- CI chạy cho mọi nhánh optimize-*.
+- Thêm production-test: /health, PWA routes, Brotli, CSP/Permissions-Policy và SHA-256 manifest.
+- Thêm performance-budget-test để chặn JS/CSS/HTML phình quá ngưỡng.
+
+## Kiểm chứng CI
+
+HEAD tối ưu đã qua:
+- npm run check
+- npm test
+- npm run benchmark:zombie
+- production regression test
+- P2P broker tests
+- performance budget tests
+
+Performance budget tại run kiểm chứng:
+- Runtime JS/MJS: 252,043 B
+- CSS: 40,778 B
+- HTML: 31,238 B
+- Module runtime lớn nhất: battle.js 31,358 B
+
+Ba run CI liên tiếp (cùng nhánh, engine không thay đổi) cho thấy độ dao động của shared runner:
+- Battle simulation: 2412 / 2253 / 2423 ms
+- Fortnite simulation: 480 / 431 / 440 ms
+- Zombie p95: 0.681 / 0.640 / 0.793 ms
+
+Dùng median để quan sát xu hướng; không coi một run CI là FPS thiết bị thật. Đợt v2.6 không sửa engine mô phỏng, nên các số trên chủ yếu xác nhận không có lỗi chức năng/performance-budget ở lớp production mới.

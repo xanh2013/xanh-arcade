@@ -4,3 +4,5 @@
 
 
 .donor-panel{background:#202d28;border:1px solid #637459;border-radius:10px;padding:18px;margin:16px 0}.donor-panel p,.donor-panel small{line-height:1.65}.donor-panel button{margin:5px}.donor-panel small{display:block;color:#bfcbc0}#share-chart{max-width:100%;height:auto}
+
+@media (prefers-reduced-motion: reduce){*,*::before,*::after{scroll-behavior:auto!important;animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}}

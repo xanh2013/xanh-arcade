@@ -17,4 +17,6 @@ admin=b.adminPoll('admin-a',{servedBytes:3000,originBytes:1000,files:3,cacheHits
 assert.equal(b.signal('client','other',{pairId:link.pairId,signal:{candidate:{candidate:'bad'}}}).ok,false);
 clock+=6000;b.cleanup();assert.equal(b.clientPoll('client-a',{pairId:link.pairId}).enabled,false);
 clock+=50000;b.cleanup();assert.equal(b.publicState().available,false);
+
+const cap=createAssetP2PBroker({now,maxClients:2});cap.adminRegister('admin-cap',true);const c1=cap.connect('c1'),c2=cap.connect('c2'),c3=cap.connect('c3');assert.equal(c1.enabled,true);assert.equal(c2.enabled,true);assert.equal(c3.enabled,false);assert.equal(c3.reason,'capacity');assert.equal(cap.publicState().clients,2);assert.equal(cap.publicState().maxClients,2);
 console.log('PASS P2P broker: admin registration, client pairing, bidirectional signaling, byte accounting and expiry.');

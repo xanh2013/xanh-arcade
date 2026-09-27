@@ -11,3 +11,5 @@
 
 /* Visible multiplayer entry points on the home page. */
 .shooter-entry{padding:18px;margin-bottom:24px;border:1px solid #776044;border-radius:9px;background:#292722}.shooter-entry h2{font-size:20px;margin-top:10px}.shooter-entry .primary,.game-room-link{display:block;text-align:center;padding:12px 14px;border-radius:7px;font-size:12px;font-weight:700}.game-room-link{margin-top:14px;border:1px solid #776044;background:#302b25;color:#ffd1a0}.game-room-link:hover{background:#46382a}.game-room-link:focus-visible,.shooter-entry a:focus-visible{outline:2px solid #ffd1a0;outline-offset:3px}@media(max-width:650px){.sidebar a.nav-item.shooter-nav{width:auto;font-size:12px;flex:1 0 100%;justify-content:center}.sidebar a.nav-item.shooter-nav span{display:inline}.shooter-entry{margin-bottom:20px}}
+
+.game-card{content-visibility:auto;contain-intrinsic-size:420px 460px}

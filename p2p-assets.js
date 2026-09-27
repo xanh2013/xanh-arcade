@@ -3,6 +3,16 @@ const ICE={iceServers:[{urls:'stun:stun.l.google.com:19302'}]};
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 const api=async(op,data={})=>{const r=await fetch('/api/p2p/'+op,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data),signal:AbortSignal.timeout(5000)});let value={};try{value=await r.json();}catch{}if(!r.ok)throw Error(value.error||'P2P signaling failed');return value;};
 const safePath=path=>typeof path==='string'&&SAFE_ASSET.test(path);
+let manifestPromise=null;
+const getManifest=()=>manifestPromise??=api('manifest').catch(()=>({assets:{},version:'unknown'}));
+function base64url(bytes){let s='';for(const b of bytes)s+=String.fromCharCode(b);return btoa(s).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');}
+async function verifyAsset(path,blob){
+ const meta=(await getManifest()).assets?.[path];if(!meta)return false;
+ if(meta.bytes!==blob.size)return false;
+ if(!globalThis.crypto?.subtle)return false;
+ const hash=await crypto.subtle.digest('SHA-256',await blob.arrayBuffer());
+ return base64url(new Uint8Array(hash))===meta.sha256;
+}
 
 let clientPromise=null,clientChannel=null,clientPair=null,currentTransfer=null,clientPeer=null,clientUnavailableUntil=0;const assetMemory=new Map();
 async function signalClient(signal){if(clientPair)await api('client-signal',{pairId:clientPair,signal});}
@@ -16,7 +26,7 @@ async function openClient(){
   const pc=clientPeer=new RTCPeerConnection(ICE);
   pc.onicecandidate=e=>{if(e.candidate)signalClient({candidate:e.candidate}).catch(()=>{});};
   pc.ondatachannel=e=>{clientChannel=e.channel;setupClientChannel(clientChannel);};
-  const deadline=performance.now()+2200;
+  const deadline=performance.now()+1500;
   try{
    while(performance.now()<deadline){
     const polled=await api('client-poll',{pairId:clientPair});
@@ -61,7 +71,7 @@ export function fetchAssetBlob(path){
    try{channel.send(JSON.stringify({type:'get',id,path}));}catch{clearTimeout(timer);currentTransfer=null;resolve(null);}
   });
  };
- const result=queue.then(work,work).then(blob=>{if(blob)assetMemory.set(path,blob);return blob;});queue=result.catch(()=>null);return result;
+ const result=queue.then(work,work).then(async blob=>{if(blob&&!await verifyAsset(path,blob))return null;if(blob)assetMemory.set(path,blob);return blob;});queue=result.catch(()=>null);return result;
 }
 export async function assetObjectURL(path){
  const blob=await fetchAssetBlob(path);return blob?URL.createObjectURL(blob):path;
@@ -83,29 +93,30 @@ async function waitBuffered(channel){
 }
 export function createAdminAssetDonor(adminApi,onState=()=>{},onStats=()=>{}){
  let running=false,generation=0,timer=null,peers=new Map(),cachePromise=null;
- const stats={servedBytes:0,originBytes:0,files:0,cacheHits:0};
- const getCache=()=>cachePromise??=(typeof caches!=='undefined'?caches.open('xanh-p2p-assets-20260927-v2'):Promise.resolve(null));
+ const stats={servedBytes:0,originBytes:0,files:0,cacheHits:0};let remoteStats={clients:0,maxClients:0};
+ const getCache=()=>cachePromise??=(typeof caches!=='undefined'?getManifest().then(m=>caches.open('xanh-p2p-assets-'+String(m.version||'v1'))):Promise.resolve(null));
  async function sendAsset(channel,msg){
   if(!safePath(msg.path)||!msg.id)return;
   try{
    const cache=await getCache();let response=cache?await cache.match(msg.path):null,wasCached=Boolean(response);
    if(wasCached){stats.cacheHits++;}else{response=await fetch(msg.path,{cache:'force-cache',signal:AbortSignal.timeout(15000)});if(!response.ok)throw Error();if(cache)await cache.put(msg.path,response.clone());}
    const blob=await response.blob();
+   if(!await verifyAsset(msg.path,blob)){if(cache)await cache.delete(msg.path);throw Error('Asset integrity mismatch');}
    // A cache miss consumes Render bandwidth once; future clients reuse the cached copy.
    if(!wasCached)stats.originBytes+=blob.size;
    channel.send(JSON.stringify({type:'asset-start',id:msg.id,size:blob.size,mime:blob.type}));
    const buffer=await blob.arrayBuffer(),chunk=16384;
    for(let offset=0;offset<buffer.byteLength;offset+=chunk){await waitBuffered(channel);channel.send(buffer.slice(offset,Math.min(buffer.byteLength,offset+chunk)));}
-   channel.send(JSON.stringify({type:'asset-end',id:msg.id}));stats.servedBytes+=blob.size;stats.files++;onStats({...stats,savedBytes:Math.max(0,stats.servedBytes-stats.originBytes)});
+   channel.send(JSON.stringify({type:'asset-end',id:msg.id}));stats.servedBytes+=blob.size;stats.files++;onStats({...stats,...remoteStats,savedBytes:Math.max(0,stats.servedBytes-stats.originBytes)});
   }catch{try{channel.send(JSON.stringify({type:'asset-error',id:msg.id}));}catch{}}
  }
  function closePeer(pairId){const p=peers.get(pairId);if(!p)return;try{p.channel?.close();p.pc.close();}catch{}peers.delete(pairId);}
  async function createPeer(pairId,g){
   if(!running||g!==generation||typeof RTCPeerConnection==='undefined')return;
-  closePeer(pairId);const pc=new RTCPeerConnection(ICE),channel=pc.createDataChannel('xanh-assets',{ordered:true});peers.set(pairId,{pc,channel});
+  closePeer(pairId);const pc=new RTCPeerConnection(ICE),channel=pc.createDataChannel('xanh-assets',{ordered:true});peers.set(pairId,{pc,channel,sendQueue:Promise.resolve()});
   channel.onopen=()=>onState('P2P đang phục vụ '+[...peers.values()].filter(p=>p.channel.readyState==='open').length+' máy.',true);
   channel.onclose=()=>closePeer(pairId);
-  channel.onmessage=e=>{if(typeof e.data!=='string')return;let msg;try{msg=JSON.parse(e.data);}catch{return;}if(msg.type==='get')sendAsset(channel,msg);};
+  channel.onmessage=e=>{if(typeof e.data!=='string'||e.data.length>512)return;let msg;try{msg=JSON.parse(e.data);}catch{return;}if(msg.type==='get'){const peer=peers.get(pairId);if(peer)peer.sendQueue=peer.sendQueue.then(()=>sendAsset(channel,msg),()=>sendAsset(channel,msg));}};
   pc.onicecandidate=e=>{if(e.candidate)adminApi('p2p/admin-signal',{pairId,signal:{candidate:e.candidate}}).catch(()=>{});};
   const offer=await pc.createOffer();await pc.setLocalDescription(offer);await adminApi('p2p/admin-signal',{pairId,signal:{description:pc.localDescription}});
  }
@@ -117,10 +128,19 @@ export function createAdminAssetDonor(adminApi,onState=()=>{},onStats=()=>{}){
     if(event.type==='connect')await createPeer(event.pairId,g);
     else if(event.type==='signal'){const p=peers.get(event.pairId);if(!p)continue;const s=event.signal;if(s.description)await p.pc.setRemoteDescription(s.description);else if(s.candidate)try{await p.pc.addIceCandidate(s.candidate);}catch{}}
    }
-   onStats({...stats,...r.stats,savedBytes:Math.max(0,stats.servedBytes-stats.originBytes)});
+   remoteStats={clients:r.stats?.clients||0,maxClients:r.stats?.maxClients||0};onStats({...stats,...remoteStats,savedBytes:Math.max(0,stats.servedBytes-stats.originBytes)});
   }catch(error){if(running)onState('P2P đang nối lại: '+error.message,true);}
   finally{if(running&&g===generation)timer=setTimeout(()=>poll(g),25);}
  }
  function stop(notify=true){running=false;generation++;clearTimeout(timer);for(const id of [...peers.keys()])closePeer(id);if(notify)adminApi('p2p/admin-register',{enabled:false}).catch(()=>{});onState('Đã dừng chia sẻ băng thông.',false);}
- return {async start(){if(running)return;if(typeof RTCPeerConnection==='undefined'){onState('Trình duyệt không hỗ trợ WebRTC.',false);return;}running=true;generation++;const g=generation;try{const r=await adminApi('p2p/admin-register',{enabled:true});if(!r.enabled)throw Error('Không bật được P2P');onState('Đang chia sẻ băng thông P2P · chờ người chơi…',true);poll(g);}catch(e){running=false;onState(e.message,false);}},stop,getStats:()=>({...stats,savedBytes:Math.max(0,stats.servedBytes-stats.originBytes)})};
+ async function preload(){
+  const manifest=await getManifest(),entries=Object.entries(manifest.assets||{}),cache=await getCache();let done=0,misses=0;
+  for(const [path,meta] of entries){
+   let response=cache?await cache.match(path):null;
+   if(!response){response=await fetch(path,{cache:'reload',signal:AbortSignal.timeout(15000)});if(!response.ok)continue;const blob=await response.blob();if(!await verifyAsset(path,blob))continue;if(cache)await cache.put(path,new Response(blob,{headers:{'Content-Type':meta.type||blob.type}}));stats.originBytes+=blob.size;misses++;}
+   done++;if(done%10===0||done===entries.length){onState('Đang nạp cache P2P '+done+' / '+entries.length+'…',running);onStats({...stats,savedBytes:Math.max(0,stats.servedBytes-stats.originBytes)});}
+  }
+  onState('Cache P2P sẵn sàng · '+done+' file'+(misses?' · tải mới '+misses:' · không cần tải mới'),running);return {done,misses};
+ }
+ return {async start(){if(running)return;if(typeof RTCPeerConnection==='undefined'){onState('Trình duyệt không hỗ trợ WebRTC.',false);return;}running=true;generation++;const g=generation;try{const r=await adminApi('p2p/admin-register',{enabled:true});if(!r.enabled)throw Error('Không bật được P2P');onState('Đang chia sẻ băng thông P2P · chờ người chơi…',true);poll(g);}catch(e){running=false;onState(e.message,false);}},stop,preload,getStats:()=>({...stats,savedBytes:Math.max(0,stats.servedBytes-stats.originBytes)})};
 }
