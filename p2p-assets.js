@@ -17,7 +17,7 @@ async function verifyAsset(path,blob){
 let clientPromise=null,clientChannel=null,clientPair=null,currentTransfer=null,clientPeer=null,clientUnavailableUntil=0;const assetMemory=new Map();
 async function signalClient(signal){if(clientPair)await api('client-signal',{pairId:clientPair,signal});}
 function resetClient({state='closed',backoff=3000}={}){
- const pairId=clientPair,pc=clientPeer,channel=clientChannel;clientPair=null;clientPeer=null;clientChannel=null;currentTransfer=null;clientUnavailableUntil=Date.now()+backoff;
+ const pairId=clientPair,pc=clientPeer,channel=clientChannel,transfer=currentTransfer;clientPair=null;clientPeer=null;clientChannel=null;currentTransfer=null;clientUnavailableUntil=Date.now()+backoff;if(transfer){clearTimeout(transfer.timer);transfer.resolve(null);}
  try{if(channel){channel.onclose=null;channel.close();}}catch{}try{if(pc)pc.close();}catch{}
  if(pairId)api('client-state',{pairId,state}).catch(()=>{});
 }
