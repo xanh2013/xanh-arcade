@@ -71,7 +71,7 @@ if(path.startsWith('/api/p2p/')){
  try{
   if(op==='manifest')send(res,200,await assetManifest());
   else if(op==='client-connect')send(res,200,p2p.connect(s.id));
-  else if(op==='client-poll')send(res,200,p2p.clientPoll(s.id,d));
+  else if(op==='client-poll')send(res,200,await p2p.clientWait(s.id,d,1200));
   else if(op==='client-signal')send(res,200,p2p.signal('client',s.id,d));
   else if(op==='client-state')send(res,200,p2p.connectionState('client',s.id,d));
   else if(op==='client-disconnect')send(res,200,p2p.disconnect('client',s.id,d));
