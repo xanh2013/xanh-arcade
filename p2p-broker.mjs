@@ -24,14 +24,14 @@ export function createAssetP2PBroker({now=Date.now,pairTtlMs=30000,maxClients=8,
   }
   const events=[];
   for(const p of pairs.values())if(p.adminId===sessionId&&p.adminQueue.length)events.push(...p.adminQueue.splice(0));
-  const clients=[...pairs.values()].filter(p=>p.adminId===sessionId).length;
-  return {enabled:true,events,stats:{...stats,clients,maxClients,savedBytes:Math.max(0,stats.servedBytes-stats.originBytes)}};
+  let pairsCount=0,connected=0;for(const p of pairs.values())if(p.adminId===sessionId){pairsCount++;if(p.state==='open')connected++;}
+  return {enabled:true,events,stats:{...stats,pairs:pairsCount,connected,handshaking:Math.max(0,pairsCount-connected),maxClients,savedBytes:Math.max(0,stats.servedBytes-stats.originBytes)}};
  }
  function connect(clientId){
   cleanup();if(!adminId)return {enabled:false};
   for(const [id,p] of pairs)if(p.clientId===clientId)pairs.delete(id);
   let clients=0;for(const p of pairs.values())if(p.adminId===adminId)clients++;if(clients>=maxClients)return {enabled:false,reason:'capacity'};
-  const pairId=randomUUID(),p={id:pairId,adminId,clientId,adminQueue:[{type:'connect',pairId}],clientQueue:[],last:now()};
+  const pairId=randomUUID(),p={id:pairId,adminId,clientId,state:'handshaking',openedAt:0,adminQueue:[{type:'connect',pairId}],clientQueue:[],last:now()};
   pairs.set(pairId,p);for(const wake of [...adminWaiters])wake();return {enabled:true,pairId};
  }
  function signal(role,sessionId,{pairId,signal}={}){
@@ -45,6 +45,14 @@ export function createAssetP2PBroker({now=Date.now,pairTtlMs=30000,maxClients=8,
   cleanup();const p=pairs.get(pairId);if(!p||p.clientId!==sessionId)return {enabled:false,events:[]};
   p.last=now();return {enabled:true,events:p.clientQueue.splice(0)};
  }
+ function connectionState(role,sessionId,{pairId,state}={}){
+  cleanup();const p=pairs.get(pairId);if(!p)return {ok:false};
+  if(role==='admin'&&p.adminId!==sessionId)return {ok:false};
+  if(role==='client'&&p.clientId!==sessionId)return {ok:false};
+  const next=['handshaking','open','failed','closed'].includes(state)?state:'handshaking';p.state=next;p.last=now();if(next==='open'&&!p.openedAt)p.openedAt=p.last;
+  if(next==='failed'||next==='closed')pairs.delete(pairId);
+  return {ok:true,state:next};
+ }
  function disconnect(role,sessionId,{pairId}={}){
   const p=pairs.get(pairId);if(!p)return {ok:true};
   if(role==='admin'&&p.adminId!==sessionId)return {ok:false};
@@ -56,6 +64,6 @@ export function createAssetP2PBroker({now=Date.now,pairTtlMs=30000,maxClients=8,
   await new Promise(resolve=>{let done=false;const finish=()=>{if(done)return;done=true;clearTimeout(timer);adminWaiters.delete(finish);resolve();};const timer=setTimeout(finish,Math.max(1000,Math.min(20000,timeoutMs)));adminWaiters.add(finish);});
   result=adminPoll(sessionId);return result;
  }
- function publicState(){cleanup();let clients=0;if(adminId)for(const p of pairs.values())if(p.adminId===adminId)clients++;return {available:Boolean(adminId),clients,maxClients};}
- return {adminRegister,adminPoll,adminWait,connect,signal,clientPoll,disconnect,publicState,cleanup,_pairs:pairs,_stats:stats};
+ function publicState(){cleanup();let pairsCount=0,connected=0;if(adminId)for(const p of pairs.values())if(p.adminId===adminId){pairsCount++;if(p.state==='open')connected++;}return {available:Boolean(adminId),pairs:pairsCount,connected,handshaking:Math.max(0,pairsCount-connected),maxClients};}
+ return {adminRegister,adminPoll,adminWait,connect,signal,clientPoll,connectionState,disconnect,publicState,cleanup,_pairs:pairs,_stats:stats};
 }
