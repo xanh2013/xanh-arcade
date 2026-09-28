@@ -73,11 +73,13 @@ if(path.startsWith('/api/p2p/')){
   else if(op==='client-connect')send(res,200,p2p.connect(s.id));
   else if(op==='client-poll')send(res,200,p2p.clientPoll(s.id,d));
   else if(op==='client-signal')send(res,200,p2p.signal('client',s.id,d));
+  else if(op==='client-state')send(res,200,p2p.connectionState('client',s.id,d));
   else if(op==='client-disconnect')send(res,200,p2p.disconnect('client',s.id,d));
   else if(op.startsWith('admin-')){
    if(op==='admin-register'){await accounts.requireAdmin(req,res);send(res,200,p2p.adminRegister(s.id,d.enabled!==false));}
    else if(op==='admin-poll')send(res,200,await p2p.adminWait(s.id,d.stats,18000));
    else if(op==='admin-signal')send(res,200,p2p.signal('admin',s.id,d));
+   else if(op==='admin-state')send(res,200,p2p.connectionState('admin',s.id,d));
    else if(op==='admin-disconnect')send(res,200,p2p.disconnect('admin',s.id,d));
    else send(res,404,{error:'Không tìm thấy thao tác P2P.'});
   }else send(res,404,{error:'Không tìm thấy thao tác P2P.'});
