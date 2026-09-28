@@ -3,7 +3,7 @@ import {randomUUID} from 'node:crypto';
 export function createAssetP2PBroker({now=Date.now,pairTtlMs=30000,maxClients=8,maxSignals=64}={}){
  let adminId=null,adminSeen=0;
  const pairs=new Map(),adminWaiters=new Set(),clientWaiters=new Map();
- const stats={servedBytes:0,originBytes:0,files:0,cacheHits:0,connectionsOpened:0,connectionFailures:0,updated:0};
+ const stats={servedBytes:0,originBytes:0,files:0,cacheHits:0,connectionsOpened:0,connectionFailures:0,lastFailure:null,updated:0};
  function wakeClient(pairId){const set=clientWaiters.get(pairId);if(!set)return;for(const wake of [...set])wake();}
  function dropPair(pairId){wakeClient(pairId);clientWaiters.delete(pairId);pairs.delete(pairId);}
 
@@ -33,7 +33,7 @@ export function createAssetP2PBroker({now=Date.now,pairTtlMs=30000,maxClients=8,
   cleanup();if(!adminId)return {enabled:false};
   for(const [id,p] of pairs)if(p.clientId===clientId)dropPair(id);
   let clients=0;for(const p of pairs.values())if(p.adminId===adminId)clients++;if(clients>=maxClients)return {enabled:false,reason:'capacity'};
-  const pairId=randomUUID(),p={id:pairId,adminId,clientId,state:'handshaking',openedAt:0,adminQueue:[{type:'connect',pairId}],clientQueue:[],last:now()};
+  const pairId=randomUUID(),p={id:pairId,adminId,clientId,state:'handshaking',openedAt:0,diagnostics:{admin:null,client:null},adminQueue:[{type:'connect',pairId}],clientQueue:[],last:now()};
   pairs.set(pairId,p);for(const wake of [...adminWaiters])wake();return {enabled:true,pairId};
  }
  function signal(role,sessionId,{pairId,signal}={}){
@@ -52,11 +52,15 @@ export function createAssetP2PBroker({now=Date.now,pairTtlMs=30000,maxClients=8,
   await new Promise(resolve=>{let done=false;const finish=()=>{if(done)return;done=true;clearTimeout(timer);const set=clientWaiters.get(pairId);set?.delete(finish);if(set&&!set.size)clientWaiters.delete(pairId);resolve();};const timer=setTimeout(finish,Math.max(200,Math.min(1500,timeoutMs)));let set=clientWaiters.get(pairId);if(!set)clientWaiters.set(pairId,set=new Set());set.add(finish);});
   return clientPoll(sessionId,data);
  }
- function connectionState(role,sessionId,{pairId,state}={}){
+ function connectionState(role,sessionId,{pairId,state,diagnostics}={}){
   cleanup();const p=pairs.get(pairId);if(!p)return {ok:false};
   if(role==='admin'&&p.adminId!==sessionId)return {ok:false};
   if(role==='client'&&p.clientId!==sessionId)return {ok:false};
-  const next=['handshaking','open','failed','closed'].includes(state)?state:'handshaking';const previous=p.state;p.state=next;p.last=now();if(next==='open'&&!p.openedAt){p.openedAt=p.last;stats.connectionsOpened++;}if(next==='failed'&&previous!=='open')stats.connectionFailures++;
+  const cleanDiag=value=>{if(!value||typeof value!=='object')return null;const count=x=>Math.max(0,Math.min(64,Math.floor(Number(x)||0))),cand=v=>({host:count(v?.host),srflx:count(v?.srflx),relay:count(v?.relay),other:count(v?.other)});return {iceState:String(value.iceState||'').slice(0,24),connectionState:String(value.connectionState||'').slice(0,24),local:cand(value.local),remote:cand(value.remote),turnConfigured:value.turnConfigured===true};};
+  const diag=cleanDiag(diagnostics);if(diag)p.diagnostics[role]=diag;
+  const next=['handshaking','open','failed','closed'].includes(state)?state:'handshaking';const previous=p.state;p.state=next;p.last=now();
+  if(next==='open'&&!p.openedAt){p.openedAt=p.last;stats.connectionsOpened++;}
+  if(next==='failed'&&previous!=='open'){stats.connectionFailures++;stats.lastFailure={at:p.last,admin:p.diagnostics.admin,client:p.diagnostics.client};}
   if(next==='failed'||next==='closed')dropPair(pairId);for(const wake of [...adminWaiters])wake();
   return {ok:true,state:next};
  }
