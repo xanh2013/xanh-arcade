@@ -109,3 +109,15 @@ Ba run CI liên tiếp (cùng nhánh, engine không thay đổi) cho thấy đ�
 - Zombie p95: 0.681 / 0.640 / 0.793 ms
 
 Dùng median để quan sát xu hướng; không coi một run CI là FPS thiết bị thật. Đợt v2.6 không sửa engine mô phỏng, nên các số trên chủ yếu xác nhận không có lỗi chức năng/performance-budget ở lớp production mới.
+
+
+## Resource sharing v3 · 2026-09-28
+
+- CPU donation remains a dedicated Web Worker with a capped duty cycle. Player donation is now explicit opt-in; Admin donation remains an explicit Admin action.
+- Worker RAM is now used for a bounded LRU cache of navigation grids and reported separately from network task bytes. This is client-side task cache, not extra Render RAM.
+- WebGPU capability is detected for telemetry only. No GPU task is dispatched yet; the UI says this explicitly instead of implying GPU offload.
+- P2P distinguishes signaling pairs from actually opened WebRTC DataChannels. Dashboard shows handshaking, direct-open and failure counts separately.
+- WebRTC negotiation can continue in the background for up to 8 seconds, while an asset waits only briefly before falling back to Render, avoiding a slow game load.
+- ICE candidates received before remote SDP are queued rather than discarded.
+- Open DataChannels are no longer expired by the handshake TTL.
+- Client signaling uses long-polling to reduce Render request overhead.
