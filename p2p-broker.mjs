@@ -3,7 +3,7 @@ import {randomUUID} from 'node:crypto';
 export function createAssetP2PBroker({now=Date.now,pairTtlMs=30000,maxClients=8,maxSignals=64}={}){
  let adminId=null,adminSeen=0;
  const pairs=new Map(),adminWaiters=new Set();
- const stats={servedBytes:0,originBytes:0,files:0,cacheHits:0,updated:0};
+ const stats={servedBytes:0,originBytes:0,files:0,cacheHits:0,connectionsOpened:0,connectionFailures:0,updated:0};
 
  function cleanup(){
   const t=now();
@@ -49,7 +49,7 @@ export function createAssetP2PBroker({now=Date.now,pairTtlMs=30000,maxClients=8,
   cleanup();const p=pairs.get(pairId);if(!p)return {ok:false};
   if(role==='admin'&&p.adminId!==sessionId)return {ok:false};
   if(role==='client'&&p.clientId!==sessionId)return {ok:false};
-  const next=['handshaking','open','failed','closed'].includes(state)?state:'handshaking';p.state=next;p.last=now();if(next==='open'&&!p.openedAt)p.openedAt=p.last;
+  const next=['handshaking','open','failed','closed'].includes(state)?state:'handshaking';const previous=p.state;p.state=next;p.last=now();if(next==='open'&&!p.openedAt){p.openedAt=p.last;stats.connectionsOpened++;}if(next==='failed'&&previous!=='open')stats.connectionFailures++;
   if(next==='failed'||next==='closed')pairs.delete(pairId);
   return {ok:true,state:next};
  }
