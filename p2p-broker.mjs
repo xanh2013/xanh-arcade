@@ -18,7 +18,7 @@ export function createAssetP2PBroker({now=Date.now,pairTtlMs=30000,maxClients=8,
   adminId=sessionId;adminSeen=now();return {enabled:true};
  }
  function adminPoll(sessionId,reported){
-  cleanup();if(adminId!==sessionId)return {enabled:false,events:[],stats:{...stats,clients:0}};
+  cleanup();if(adminId!==sessionId)return {enabled:false,events:[],stats:{...stats,pairs:0,connected:0,handshaking:0,maxClients}};
   adminSeen=now();
   if(reported&&typeof reported==='object'){
    for(const key of ['servedBytes','originBytes','files','cacheHits']){const n=Number(reported[key]);if(Number.isFinite(n)&&n>=0)stats[key]=Math.floor(n);}
@@ -31,7 +31,7 @@ export function createAssetP2PBroker({now=Date.now,pairTtlMs=30000,maxClients=8,
  }
  function connect(clientId){
   cleanup();if(!adminId)return {enabled:false};
-  for(const [id,p] of pairs)if(p.clientId===clientId)pairs.delete(id);
+  for(const [id,p] of pairs)if(p.clientId===clientId)dropPair(id);
   let clients=0;for(const p of pairs.values())if(p.adminId===adminId)clients++;if(clients>=maxClients)return {enabled:false,reason:'capacity'};
   const pairId=randomUUID(),p={id:pairId,adminId,clientId,state:'handshaking',openedAt:0,adminQueue:[{type:'connect',pairId}],clientQueue:[],last:now()};
   pairs.set(pairId,p);for(const wake of [...adminWaiters])wake();return {enabled:true,pairId};
