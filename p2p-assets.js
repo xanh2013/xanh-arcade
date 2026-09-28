@@ -3,7 +3,7 @@ const DEFAULT_ICE={iceServers:[{urls:['stun:stun.l.google.com:19302','stun:stun1
 let iceConfigPromise=null;
 const getIceConfig=()=>iceConfigPromise??=api('ice').then(value=>value&&Array.isArray(value.iceServers)?value:DEFAULT_ICE).catch(()=>DEFAULT_ICE);
 function candidateType(candidate){const direct=String(candidate?.type||'').toLowerCase();if(['host','srflx','relay','prflx'].includes(direct))return direct==='prflx'?'other':direct;const match=/\btyp\s+(host|srflx|relay|prflx)\b/i.exec(String(candidate?.candidate||candidate||''));return match?(match[1].toLowerCase()==='prflx'?'other':match[1].toLowerCase()):'other';}
-function newIceDiagnostics(config){return {local:{host:0,srflx:0,relay:0,other:0},remote:{host:0,srflx:0,relay:0,other:0},turnConfigured:config?.turnConfigured===true,iceState:'new',connectionState:'new'};}
+function newIceDiagnostics(config){return {local:{host:0,srflx:0,relay:0,other:0},remote:{host:0,srflx:0,relay:0,other:0},turnConfigured:config?.turnConfigured===true,iceErrors:0,iceState:'new',connectionState:'new'};}
 function noteCandidate(diag,side,candidate){if(!candidate||!diag?.[side])return;diag[side][candidateType(candidate)]++;}
 function iceDiagnostics(pc,diag){return {...diag,local:{...diag.local},remote:{...diag.remote},iceState:pc?.iceConnectionState||diag.iceState,connectionState:pc?.connectionState||diag.connectionState};}
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
@@ -52,6 +52,7 @@ async function connectClient(){
   const config=await getIceConfig(),pc=clientPeer=new RTCPeerConnection({iceServers:config.iceServers||DEFAULT_ICE.iceServers}),pendingCandidates=[],diag=pc.__xanhDiag=newIceDiagnostics(config);
   pc.onicecandidate=e=>{if(e.candidate){noteCandidate(diag,'local',e.candidate);signalClient({candidate:e.candidate}).catch(()=>{});}};
   pc.ondatachannel=e=>setupClientChannel(e.channel);
+  pc.onicecandidateerror=()=>{diag.iceErrors++;};
   const fail=()=>{if(clientPair===start.pairId)resetClient({state:'failed',backoff:5000,diagnostics:iceDiagnostics(pc,diag)});};
   pc.onconnectionstatechange=()=>{if(pc.connectionState==='failed')fail();};
   pc.oniceconnectionstatechange=()=>{if(pc.iceConnectionState==='failed')fail();};
@@ -130,6 +131,7 @@ export function createAdminAssetDonor(adminApi,onState=()=>{},onStats=()=>{}){
   channel.onclose=()=>closePeer(pairId,'closed',true);
   channel.onmessage=e=>{if(typeof e.data!=='string'||e.data.length>512)return;let msg;try{msg=JSON.parse(e.data);}catch{return;}if(msg.type==='get'){const peer=peers.get(pairId);if(peer)peer.sendQueue=peer.sendQueue.then(()=>sendAsset(channel,msg),()=>sendAsset(channel,msg));}};
   pc.onicecandidate=e=>{if(e.candidate){noteCandidate(diag,'local',e.candidate);adminApi('p2p/admin-signal',{pairId,signal:{candidate:e.candidate}}).catch(()=>{});}};
+  pc.onicecandidateerror=()=>{diag.iceErrors++;};
   const fail=()=>{if(peers.has(pairId))closePeer(pairId,'failed',true,iceDiagnostics(pc,diag));};
   pc.onconnectionstatechange=()=>{if(pc.connectionState==='failed')fail();};
   pc.oniceconnectionstatechange=()=>{if(pc.iceConnectionState==='failed')fail();};
