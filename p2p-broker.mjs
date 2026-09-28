@@ -71,6 +71,6 @@ export function createAssetP2PBroker({now=Date.now,pairTtlMs=30000,maxClients=8,
   await new Promise(resolve=>{let done=false;const finish=()=>{if(done)return;done=true;clearTimeout(timer);adminWaiters.delete(finish);resolve();};const timer=setTimeout(finish,Math.max(1000,Math.min(20000,timeoutMs)));adminWaiters.add(finish);});
   result=adminPoll(sessionId);return result;
  }
- function publicState(){cleanup();let pairsCount=0,connected=0;if(adminId)for(const p of pairs.values())if(p.adminId===adminId){pairsCount++;if(p.state==='open')connected++;}return {available:Boolean(adminId),pairs:pairsCount,connected,handshaking:Math.max(0,pairsCount-connected),maxClients};}
+ function publicState(){cleanup();let pairsCount=0,connected=0;if(adminId)for(const p of pairs.values())if(p.adminId===adminId){pairsCount++;if(p.state==='open')connected++;}return {available:Boolean(adminId),pairs:pairsCount,connected,handshaking:Math.max(0,pairsCount-connected),maxClients,connectionsOpened:stats.connectionsOpened,connectionFailures:stats.connectionFailures,servedBytes:stats.servedBytes,originBytes:stats.originBytes,savedBytes:Math.max(0,stats.servedBytes-stats.originBytes)};}
  return {adminRegister,adminPoll,adminWait,connect,signal,clientPoll,clientWait,connectionState,disconnect,publicState,cleanup,_pairs:pairs,_stats:stats};
 }

@@ -19,9 +19,9 @@ assert.equal(b.signal('client','client-a',{pairId:link.pairId,signal:{descriptio
 assert.equal(b.connectionState('admin','admin-a',{pairId:link.pairId,state:'open'}).ok,true);
 admin=b.adminPoll('admin-a',{servedBytes:3000,originBytes:1000,files:3,cacheHits:2});assert.equal(admin.events[0].signal.description.type,'answer');assert.equal(admin.stats.savedBytes,2000);assert.equal(admin.stats.pairs,1);assert.equal(admin.stats.connected,1);assert.equal(admin.stats.handshaking,0);assert.equal(admin.stats.connectionsOpened,1);
 clock+=6000;b.cleanup();assert.equal(b.publicState().connected,1);assert.equal(b.clientPoll('client-a',{pairId:link.pairId}).enabled,true);
-assert.equal(b.connectionState('client','client-a',{pairId:link.pairId,state:'closed'}).ok,true);assert.equal(b.publicState().pairs,0);
+assert.equal(b.connectionState('client','client-a',{pairId:link.pairId,state:'closed'}).ok,true);assert.equal(b.publicState().pairs,0);assert.equal(b.publicState().connectionsOpened,1);
 
-const bad=b.connect('client-bad');assert.equal(b.connectionState('client','client-bad',{pairId:bad.pairId,state:'failed'}).ok,true);admin=b.adminPoll('admin-a');assert.equal(admin.stats.connectionFailures,1);
+const bad=b.connect('client-bad');assert.equal(b.connectionState('client','client-bad',{pairId:bad.pairId,state:'failed'}).ok,true);admin=b.adminPoll('admin-a');assert.equal(admin.stats.connectionFailures,1);assert.equal(b.publicState().connectionFailures,1);
 assert.equal(b.signal('client','other',{pairId:'missing',signal:{candidate:{candidate:'bad'}}}).ok,false);
 
 clock+=50000;b.cleanup();assert.equal(b.publicState().available,false);
