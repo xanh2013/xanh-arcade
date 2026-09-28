@@ -105,7 +105,7 @@ async function waitBuffered(channel){
 }
 export function createAdminAssetDonor(adminApi,onState=()=>{},onStats=()=>{}){
  let running=false,generation=0,timer=null,peers=new Map(),cachePromise=null;
- const stats={servedBytes:0,originBytes:0,files:0,cacheHits:0};let remoteStats={pairs:0,connected:0,handshaking:0,maxClients:0,connectionsOpened:0,connectionFailures:0};
+ const stats={servedBytes:0,originBytes:0,files:0,cacheHits:0};let remoteStats={pairs:0,connected:0,handshaking:0,maxClients:0,connectionsOpened:0,connectionFailures:0,lastFailure:null,turnConfigured:false,turnMode:'none'};
  const getCache=()=>cachePromise??=(typeof caches!=='undefined'?getManifest().then(m=>caches.open('xanh-p2p-assets-'+String(m.version||'v1'))):Promise.resolve(null));
  async function sendAsset(channel,msg){
   if(!safePath(msg.path)||!msg.id)return;
@@ -143,7 +143,7 @@ export function createAdminAssetDonor(adminApi,onState=()=>{},onStats=()=>{}){
     if(event.type==='connect')await createPeer(event.pairId,g);
     else if(event.type==='signal'){const peer=peers.get(event.pairId);if(!peer)continue;const s=event.signal;if(s.description){await peer.pc.setRemoteDescription(s.description);for(const candidate of peer.pendingCandidates.splice(0))try{await peer.pc.addIceCandidate(candidate);}catch{}}else if(s.candidate){noteCandidate(peer.diag,'remote',s.candidate);if(peer.pc.remoteDescription)try{await peer.pc.addIceCandidate(s.candidate);}catch{}else peer.pendingCandidates.push(s.candidate);}}
    }
-   remoteStats={pairs:r.stats?.pairs||0,connected:r.stats?.connected||0,handshaking:r.stats?.handshaking||0,maxClients:r.stats?.maxClients||0,connectionsOpened:r.stats?.connectionsOpened||0,connectionFailures:r.stats?.connectionFailures||0};onStats({...stats,...remoteStats,savedBytes:Math.max(0,stats.servedBytes-stats.originBytes)});
+   remoteStats={...remoteStats,pairs:r.stats?.pairs||0,connected:r.stats?.connected||0,handshaking:r.stats?.handshaking||0,maxClients:r.stats?.maxClients||0,connectionsOpened:r.stats?.connectionsOpened||0,connectionFailures:r.stats?.connectionFailures||0,lastFailure:r.stats?.lastFailure||remoteStats.lastFailure};onStats({...stats,...remoteStats,savedBytes:Math.max(0,stats.servedBytes-stats.originBytes)});
   }catch(error){if(running)onState('P2P đang nối lại: '+error.message,true);}
   finally{if(running&&g===generation)timer=setTimeout(()=>poll(g),25);}
  }
@@ -157,5 +157,5 @@ export function createAdminAssetDonor(adminApi,onState=()=>{},onStats=()=>{}){
   }
   onState('Cache P2P sẵn sàng · '+done+' file'+(misses?' · tải mới '+misses:' · không cần tải mới'),running);return {done,misses};
  }
- return {async start(){if(running)return;if(typeof RTCPeerConnection==='undefined'){onState('Trình duyệt không hỗ trợ WebRTC.',false);return;}running=true;generation++;const g=generation;try{const r=await adminApi('p2p/admin-register',{enabled:true});if(!r.enabled)throw Error('Không bật được P2P');onState('Đang chia sẻ băng thông P2P · chờ người chơi…',true);poll(g);}catch(e){running=false;onState(e.message,false);}},stop,preload,getStats:()=>({...stats,savedBytes:Math.max(0,stats.servedBytes-stats.originBytes)})};
+ return {async start(){if(running)return;if(typeof RTCPeerConnection==='undefined'){onState('Trình duyệt không hỗ trợ WebRTC.',false);return;}running=true;generation++;const g=generation;try{const ice=await getIceConfig();remoteStats.turnConfigured=ice.turnConfigured===true;remoteStats.turnMode=ice.mode||'none';onStats({...stats,...remoteStats,savedBytes:Math.max(0,stats.servedBytes-stats.originBytes)});const r=await adminApi('p2p/admin-register',{enabled:true});if(!r.enabled)throw Error('Không bật được P2P');onState('Đang chia sẻ băng thông P2P · chờ người chơi…',true);poll(g);}catch(e){running=false;onState(e.message,false);}},stop,preload,getStats:()=>({...stats,savedBytes:Math.max(0,stats.servedBytes-stats.originBytes)})};
 }
