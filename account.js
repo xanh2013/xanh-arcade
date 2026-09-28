@@ -8,7 +8,8 @@ const fmtMb=b=>(Number(b||0)/1048576).toFixed(b>=104857600?1:2)+' MB';
 function diagnoseP2P(stats){
  const failure=stats.lastFailure;if(!failure)return stats.connected?'P2P trực tiếp đang hoạt động.':'Chưa có lỗi ICE gần nhất.';
  const a=failure.admin||{},cl=failure.client||{},al=a.local||{},ar=a.remote||{},cll=cl.local||{},clr=cl.remote||{};
- const adminPublic=(al.srflx||0)+(al.relay||0)>0,clientPublic=(cll.srflx||0)+(cll.relay||0)>0,relay=(al.relay||0)+(ar.relay||0)+(cll.relay||0)+(clr.relay||0);
+ const adminPublic=(al.srflx||0)+(al.relay||0)>0,clientPublic=(cll.srflx||0)+(cll.relay||0)>0,relay=(al.relay||0)+(ar.relay||0)+(cll.relay||0)+(clr.relay||0),iceErrors=(a.iceErrors||0)+(cl.iceErrors||0);
+ if(iceErrors&&!adminPublic&&!clientPublic)return 'STUN/TURN phát sinh '+iceErrors+' lỗi và hai đầu không lấy được candidate công khai. Kiểm tra UDP/firewall/DNS hoặc dùng TURN qua TCP/TLS.';
  if(!adminPublic&&!clientPublic)return 'Cả Admin và client đều không lấy được candidate STUN/relay. Kiểm tra UDP/firewall hoặc cấu hình TURN.';
  if(!adminPublic)return 'Máy Admin không lấy được candidate công khai qua STUN. Có thể UDP/firewall/NAT đang chặn; TURN ngoài Render sẽ giúp ổn định.';
  if(!clientPublic)return 'Client không lấy được candidate công khai qua STUN. Mạng client/Cloud Browser có thể chặn WebRTC trực tiếp; cần TURN dự phòng.';
