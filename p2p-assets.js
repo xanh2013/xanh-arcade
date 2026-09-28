@@ -59,7 +59,7 @@ async function connectClient(){
     }
     if(clientChannel?.readyState==='open')return clientChannel;
     if(pc.connectionState==='failed'||pc.iceConnectionState==='failed')break;
-    await sleep(100);
+    await sleep(10);
    }
   }catch{}
   if(clientPair===start.pairId)resetClient({state:'failed',backoff:5000});return null;
