@@ -16,20 +16,41 @@ async function verifyAsset(path,blob){
 
 let clientPromise=null,clientChannel=null,clientPair=null,currentTransfer=null,clientPeer=null,clientUnavailableUntil=0;const assetMemory=new Map();
 async function signalClient(signal){if(clientPair)await api('client-signal',{pairId:clientPair,signal});}
-async function openClient(){
+function resetClient({state='closed',backoff=3000}={}){
+ const pairId=clientPair,pc=clientPeer,channel=clientChannel;clientPair=null;clientPeer=null;clientChannel=null;currentTransfer=null;clientUnavailableUntil=Date.now()+backoff;
+ try{if(channel){channel.onclose=null;channel.close();}}catch{}try{if(pc)pc.close();}catch{}
+ if(pairId)api('client-state',{pairId,state}).catch(()=>{});
+}
+function setupClientChannel(channel){
+ clientChannel=channel;channel.binaryType='arraybuffer';
+ channel.onopen=()=>{if(clientPair)api('client-state',{pairId:clientPair,state:'open'}).catch(()=>{});};
+ channel.onclose=()=>{if(clientChannel===channel)resetClient({state:'closed',backoff:2500});};
+ channel.onerror=()=>{};
+ channel.onmessage=e=>{
+  if(typeof e.data==='string'){
+   let msg;try{msg=JSON.parse(e.data);}catch{return;}
+   const t=currentTransfer;if(!t||msg.id!==t.id)return;
+   if(msg.type==='asset-start'){t.type=msg.mime||'application/octet-stream';t.expected=msg.size||0;t.received=0;t.chunks=[];}
+   else if(msg.type==='asset-end'){clearTimeout(t.timer);currentTransfer=null;if(t.expected&&t.received!==t.expected){t.resolve(null);return;}t.resolve(new Blob(t.chunks,{type:t.type}));}
+   else if(msg.type==='asset-error'){clearTimeout(t.timer);currentTransfer=null;t.resolve(null);}
+  }else if(currentTransfer){currentTransfer.chunks.push(e.data);currentTransfer.received+=(e.data?.byteLength||0);}
+ };
+}
+async function connectClient(){
  if(clientChannel?.readyState==='open')return clientChannel;
  if(Date.now()<clientUnavailableUntil)return null;
  if(clientPromise)return clientPromise;
  clientPromise=(async()=>{
   if(typeof RTCPeerConnection==='undefined')return null;
-  const start=await api('client-connect');if(!start.enabled){clientUnavailableUntil=Date.now()+10000;return null;}clientPair=start.pairId;
+  const start=await api('client-connect');if(!start.enabled){clientUnavailableUntil=Date.now()+8000;return null;}clientPair=start.pairId;
   const pc=clientPeer=new RTCPeerConnection(ICE);
   pc.onicecandidate=e=>{if(e.candidate)signalClient({candidate:e.candidate}).catch(()=>{});};
-  pc.ondatachannel=e=>{clientChannel=e.channel;setupClientChannel(clientChannel);};
-  const deadline=performance.now()+1500;
+  pc.ondatachannel=e=>setupClientChannel(e.channel);
+  pc.onconnectionstatechange=()=>{if(pc.connectionState==='failed')resetClient({state:'failed',backoff:5000});};
+  const deadline=performance.now()+8000;
   try{
-   while(performance.now()<deadline){
-    const polled=await api('client-poll',{pairId:clientPair});
+   while(clientPair===start.pairId&&performance.now()<deadline){
+    const polled=await api('client-poll',{pairId:start.pairId});
     if(!polled.enabled)break;
     for(const event of polled.events||[])if(event.type==='signal'){
      const s=event.signal;
@@ -37,55 +58,38 @@ async function openClient(){
      else if(s.candidate)try{await pc.addIceCandidate(s.candidate);}catch{}
     }
     if(clientChannel?.readyState==='open')return clientChannel;
+    if(pc.connectionState==='failed'||pc.iceConnectionState==='failed')break;
     await sleep(100);
    }
   }catch{}
-  try{pc.close();}catch{}clientPeer=null;clientChannel=null;
-  if(clientPair)api('client-disconnect',{pairId:clientPair}).catch(()=>{});
-  clientPair=null;clientUnavailableUntil=Date.now()+5000;return null;
+  if(clientPair===start.pairId)resetClient({state:'failed',backoff:5000});return null;
  })().finally(()=>{clientPromise=null;});
  return clientPromise;
 }
-function setupClientChannel(channel){
- channel.binaryType='arraybuffer';
- channel.onclose=()=>{if(clientChannel===channel)clientChannel=null;};
- channel.onmessage=e=>{
-  if(typeof e.data==='string'){
-   let msg;try{msg=JSON.parse(e.data);}catch{return;}
-   const t=currentTransfer;if(!t||msg.id!==t.id)return;
-   if(msg.type==='asset-start'){t.type=msg.mime||'application/octet-stream';t.expected=msg.size||0;t.chunks=[];}
-   else if(msg.type==='asset-end'){clearTimeout(t.timer);currentTransfer=null;t.resolve(new Blob(t.chunks,{type:t.type}));}
-   else if(msg.type==='asset-error'){clearTimeout(t.timer);currentTransfer=null;t.resolve(null);}
-  }else if(currentTransfer)currentTransfer.chunks.push(e.data);
- };
+async function channelSoon(waitMs=180){
+ if(clientChannel?.readyState==='open')return clientChannel;
+ const connecting=connectClient().catch(()=>null);
+ return Promise.race([connecting,sleep(waitMs).then(()=>clientChannel?.readyState==='open'?clientChannel:null)]);
 }
 let queue=Promise.resolve();
-export function fetchAssetBlob(path){
- if(!safePath(path))return Promise.resolve(null);
- if(assetMemory.has(path))return Promise.resolve(assetMemory.get(path));
- const work=async()=>{
-  const channel=await openClient();if(!channel||channel.readyState!=='open')return null;
-  return new Promise(resolve=>{
-   const id=Math.random().toString(36).slice(2)+Date.now().toString(36),timer=setTimeout(()=>{if(currentTransfer?.id===id)currentTransfer=null;resolve(null);},8000);
-   currentTransfer={id,resolve,timer,chunks:[],type:'application/octet-stream',expected:0};
-   try{channel.send(JSON.stringify({type:'get',id,path}));}catch{clearTimeout(timer);currentTransfer=null;resolve(null);}
-  });
- };
+export async function fetchAssetBlob(path){
+ if(!safePath(path))return null;
+ if(assetMemory.has(path))return assetMemory.get(path);
+ const channel=await channelSoon();if(!channel||channel.readyState!=='open')return null;
+ const work=()=>new Promise(resolve=>{
+  const id=Math.random().toString(36).slice(2)+Date.now().toString(36),timer=setTimeout(()=>{if(currentTransfer?.id===id)currentTransfer=null;resolve(null);},8000);
+  currentTransfer={id,resolve,timer,chunks:[],type:'application/octet-stream',expected:0,received:0};
+  try{channel.send(JSON.stringify({type:'get',id,path}));}catch{clearTimeout(timer);currentTransfer=null;resolve(null);}
+ });
  const result=queue.then(work,work).then(async blob=>{if(blob&&!await verifyAsset(path,blob))return null;if(blob)assetMemory.set(path,blob);return blob;});queue=result.catch(()=>null);return result;
 }
-export async function assetObjectURL(path){
- const blob=await fetchAssetBlob(path);return blob?URL.createObjectURL(blob):path;
-}
+export async function assetObjectURL(path){const blob=await fetchAssetBlob(path);return blob?URL.createObjectURL(blob):path;}
 export async function loadAssetImage(img,path){
- const blob=await fetchAssetBlob(path);
- if(!blob){img.src=path;return {p2p:false};}
+ const blob=await fetchAssetBlob(path);if(!blob){img.src=path;return {p2p:false};}
  const url=URL.createObjectURL(blob);img.addEventListener('load',()=>URL.revokeObjectURL(url),{once:true});img.addEventListener('error',()=>URL.revokeObjectURL(url),{once:true});img.src=url;return {p2p:true,bytes:blob.size};
 }
-export async function hydrateAssetImages(root=document){
- const images=[...root.querySelectorAll('img[data-asset-src]')];
- await Promise.all(images.map(async img=>{const path=img.dataset.assetSrc;if(!safePath(path))return;await loadAssetImage(img,path);delete img.dataset.assetSrc;}));
-}
-export function warmP2PAssets(){openClient().catch(()=>{});}
+export async function hydrateAssetImages(root=document){const images=[...root.querySelectorAll('img[data-asset-src]')];await Promise.all(images.map(async img=>{const path=img.dataset.assetSrc;if(!safePath(path))return;await loadAssetImage(img,path);delete img.dataset.assetSrc;}));}
+export function warmP2PAssets(){connectClient().catch(()=>{});}
 
 async function waitBuffered(channel){
  if(channel.bufferedAmount<524288)return;
