@@ -1,6 +1,6 @@
 {
   "name": "xanh-arcade",
-  "version": "2.7.1-beta",
+  "version": "2.7.2-beta",
   "private": true,
   "type": "module",
   "scripts": {

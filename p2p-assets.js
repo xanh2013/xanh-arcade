@@ -1,5 +1,11 @@
 const SAFE_ASSET=/^\/(?:fortnite-assets\/[A-Za-z0-9_-]+\.(?:svg|json)|cover-(?:runner|blocks|caro|chess)-v2\.webp|background-(?:runner|space)-v2\.webp)$/;
-const ICE={iceServers:[{urls:['stun:stun.l.google.com:19302','stun:stun1.l.google.com:19302']}]};
+const DEFAULT_ICE={iceServers:[{urls:['stun:stun.l.google.com:19302','stun:stun1.l.google.com:19302']}],turnConfigured:false,mode:'none'};
+let iceConfigPromise=null;
+const getIceConfig=()=>iceConfigPromise??=api('ice').then(value=>value&&Array.isArray(value.iceServers)?value:DEFAULT_ICE).catch(()=>DEFAULT_ICE);
+function candidateType(candidate){const direct=String(candidate?.type||'').toLowerCase();if(['host','srflx','relay','prflx'].includes(direct))return direct==='prflx'?'other':direct;const match=/\btyp\s+(host|srflx|relay|prflx)\b/i.exec(String(candidate?.candidate||candidate||''));return match?(match[1].toLowerCase()==='prflx'?'other':match[1].toLowerCase()):'other';}
+function newIceDiagnostics(config){return {local:{host:0,srflx:0,relay:0,other:0},remote:{host:0,srflx:0,relay:0,other:0},turnConfigured:config?.turnConfigured===true,iceErrors:0,iceState:'new',connectionState:'new'};}
+function noteCandidate(diag,side,candidate){if(!candidate||!diag?.[side])return;diag[side][candidateType(candidate)]++;}
+function iceDiagnostics(pc,diag){return {...diag,local:{...diag.local},remote:{...diag.remote},iceState:pc?.iceConnectionState||diag.iceState,connectionState:pc?.connectionState||diag.connectionState};}
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 const api=async(op,data={})=>{const r=await fetch('/api/p2p/'+op,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data),signal:AbortSignal.timeout(5000)});let value={};try{value=await r.json();}catch{}if(!r.ok)throw Error(value.error||'P2P signaling failed');return value;};
 const safePath=path=>typeof path==='string'&&SAFE_ASSET.test(path);
@@ -16,14 +22,14 @@ async function verifyAsset(path,blob){
 
 let clientPromise=null,clientChannel=null,clientPair=null,currentTransfer=null,clientPeer=null,clientUnavailableUntil=0;const assetMemory=new Map();
 async function signalClient(signal){if(clientPair)await api('client-signal',{pairId:clientPair,signal});}
-function resetClient({state='closed',backoff=3000}={}){
+function resetClient({state='closed',backoff=3000,diagnostics=null}={}){
  const pairId=clientPair,pc=clientPeer,channel=clientChannel,transfer=currentTransfer;clientPair=null;clientPeer=null;clientChannel=null;currentTransfer=null;clientUnavailableUntil=Date.now()+backoff;if(transfer){clearTimeout(transfer.timer);transfer.resolve(null);}
- try{if(channel){channel.onclose=null;channel.close();}}catch{}try{if(pc)pc.close();}catch{}
- if(pairId)api('client-state',{pairId,state}).catch(()=>{});
+ try{if(channel){channel.onclose=null;channel.close();}}catch{}try{if(pc){pc.onconnectionstatechange=null;pc.oniceconnectionstatechange=null;pc.close();}}catch{}
+ if(pairId)api('client-state',{pairId,state,diagnostics}).catch(()=>{});
 }
 function setupClientChannel(channel){
  clientChannel=channel;channel.binaryType='arraybuffer';
- channel.onopen=()=>{if(clientPair)api('client-state',{pairId:clientPair,state:'open'}).catch(()=>{});};
+ channel.onopen=()=>{if(clientPair&&clientPeer)api('client-state',{pairId:clientPair,state:'open',diagnostics:iceDiagnostics(clientPeer,clientPeer.__xanhDiag)}).catch(()=>{});};
  channel.onclose=()=>{if(clientChannel===channel)resetClient({state:'closed',backoff:2500});};
  channel.onerror=()=>{};
  channel.onmessage=e=>{
@@ -43,10 +49,13 @@ async function connectClient(){
  clientPromise=(async()=>{
   if(typeof RTCPeerConnection==='undefined')return null;
   const start=await api('client-connect');if(!start.enabled){clientUnavailableUntil=Date.now()+8000;return null;}clientPair=start.pairId;
-  const pc=clientPeer=new RTCPeerConnection(ICE),pendingCandidates=[];
-  pc.onicecandidate=e=>{if(e.candidate)signalClient({candidate:e.candidate}).catch(()=>{});};
+  const config=await getIceConfig(),pc=clientPeer=new RTCPeerConnection({iceServers:config.iceServers||DEFAULT_ICE.iceServers}),pendingCandidates=[],diag=pc.__xanhDiag=newIceDiagnostics(config);
+  pc.onicecandidate=e=>{if(e.candidate){noteCandidate(diag,'local',e.candidate);signalClient({candidate:e.candidate}).catch(()=>{});}};
   pc.ondatachannel=e=>setupClientChannel(e.channel);
-  pc.onconnectionstatechange=()=>{if(pc.connectionState==='failed')resetClient({state:'failed',backoff:5000});};
+  pc.onicecandidateerror=()=>{diag.iceErrors++;};
+  const fail=()=>{if(clientPair===start.pairId)resetClient({state:'failed',backoff:5000,diagnostics:iceDiagnostics(pc,diag)});};
+  pc.onconnectionstatechange=()=>{if(pc.connectionState==='failed')fail();};
+  pc.oniceconnectionstatechange=()=>{if(pc.iceConnectionState==='failed')fail();};
   const deadline=performance.now()+8000;
   try{
    while(clientPair===start.pairId&&performance.now()<deadline){
@@ -55,14 +64,14 @@ async function connectClient(){
     for(const event of polled.events||[])if(event.type==='signal'){
      const s=event.signal;
      if(s.description){await pc.setRemoteDescription(s.description);for(const candidate of pendingCandidates.splice(0))try{await pc.addIceCandidate(candidate);}catch{}if(s.description.type==='offer'){const answer=await pc.createAnswer();await pc.setLocalDescription(answer);await signalClient({description:pc.localDescription});}}
-     else if(s.candidate){if(pc.remoteDescription)try{await pc.addIceCandidate(s.candidate);}catch{}else pendingCandidates.push(s.candidate);}
+     else if(s.candidate){noteCandidate(diag,'remote',s.candidate);if(pc.remoteDescription)try{await pc.addIceCandidate(s.candidate);}catch{}else pendingCandidates.push(s.candidate);}
     }
     if(clientChannel?.readyState==='open')return clientChannel;
     if(pc.connectionState==='failed'||pc.iceConnectionState==='failed')break;
     await sleep(10);
    }
   }catch{}
-  if(clientPair===start.pairId)resetClient({state:'failed',backoff:5000});return null;
+  if(clientPair===start.pairId)resetClient({state:'failed',backoff:5000,diagnostics:iceDiagnostics(pc,diag)});return null;
  })().finally(()=>{clientPromise=null;});
  return clientPromise;
 }
@@ -97,7 +106,7 @@ async function waitBuffered(channel){
 }
 export function createAdminAssetDonor(adminApi,onState=()=>{},onStats=()=>{}){
  let running=false,generation=0,timer=null,peers=new Map(),cachePromise=null;
- const stats={servedBytes:0,originBytes:0,files:0,cacheHits:0};let remoteStats={pairs:0,connected:0,handshaking:0,maxClients:0,connectionsOpened:0,connectionFailures:0};
+ const stats={servedBytes:0,originBytes:0,files:0,cacheHits:0};let remoteStats={pairs:0,connected:0,handshaking:0,maxClients:0,connectionsOpened:0,connectionFailures:0,lastFailure:null,turnConfigured:false,turnMode:'none'};
  const getCache=()=>cachePromise??=(typeof caches!=='undefined'?getManifest().then(m=>caches.open('xanh-p2p-assets-'+String(m.version||'v1'))):Promise.resolve(null));
  async function sendAsset(channel,msg){
   if(!safePath(msg.path)||!msg.id)return;
@@ -114,15 +123,18 @@ export function createAdminAssetDonor(adminApi,onState=()=>{},onStats=()=>{}){
    channel.send(JSON.stringify({type:'asset-end',id:msg.id}));stats.servedBytes+=blob.size;stats.files++;onStats({...stats,...remoteStats,savedBytes:Math.max(0,stats.servedBytes-stats.originBytes)});
   }catch{try{channel.send(JSON.stringify({type:'asset-error',id:msg.id}));}catch{}}
  }
- function closePeer(pairId,state='closed',notify=true){const peer=peers.get(pairId);if(!peer)return;peers.delete(pairId);try{peer.channel.onclose=null;peer.pc.onconnectionstatechange=null;peer.channel?.close();peer.pc.close();}catch{}if(notify)adminApi('p2p/admin-state',{pairId,state}).catch(()=>{});}
+ function closePeer(pairId,state='closed',notify=true,diagnostics=null){const peer=peers.get(pairId);if(!peer)return;peers.delete(pairId);const diag=diagnostics||iceDiagnostics(peer.pc,peer.diag);try{peer.channel.onclose=null;peer.pc.onconnectionstatechange=null;peer.pc.oniceconnectionstatechange=null;peer.channel?.close();peer.pc.close();}catch{}if(notify)adminApi('p2p/admin-state',{pairId,state,diagnostics:diag}).catch(()=>{});}
  async function createPeer(pairId,g){
   if(!running||g!==generation||typeof RTCPeerConnection==='undefined')return;
-  closePeer(pairId,'closed',false);const pc=new RTCPeerConnection(ICE),channel=pc.createDataChannel('xanh-assets',{ordered:true});peers.set(pairId,{pc,channel,sendQueue:Promise.resolve(),pendingCandidates:[]});
-  channel.onopen=()=>{adminApi('p2p/admin-state',{pairId,state:'open'}).catch(()=>{});const direct=[...peers.values()].filter(p=>p.channel.readyState==='open').length;onState('P2P trực tiếp đang phục vụ '+direct+' máy.',true);};
+  closePeer(pairId,'closed',false);const config=await getIceConfig(),pc=new RTCPeerConnection({iceServers:config.iceServers||DEFAULT_ICE.iceServers}),channel=pc.createDataChannel('xanh-assets',{ordered:true}),diag=newIceDiagnostics(config);peers.set(pairId,{pc,channel,diag,sendQueue:Promise.resolve(),pendingCandidates:[]});
+  channel.onopen=()=>{adminApi('p2p/admin-state',{pairId,state:'open',diagnostics:iceDiagnostics(pc,diag)}).catch(()=>{});const direct=[...peers.values()].filter(p=>p.channel.readyState==='open').length;onState('P2P trực tiếp đang phục vụ '+direct+' máy.',true);};
   channel.onclose=()=>closePeer(pairId,'closed',true);
   channel.onmessage=e=>{if(typeof e.data!=='string'||e.data.length>512)return;let msg;try{msg=JSON.parse(e.data);}catch{return;}if(msg.type==='get'){const peer=peers.get(pairId);if(peer)peer.sendQueue=peer.sendQueue.then(()=>sendAsset(channel,msg),()=>sendAsset(channel,msg));}};
-  pc.onicecandidate=e=>{if(e.candidate)adminApi('p2p/admin-signal',{pairId,signal:{candidate:e.candidate}}).catch(()=>{});};
-  pc.onconnectionstatechange=()=>{if(pc.connectionState==='failed')closePeer(pairId,'failed',true);};
+  pc.onicecandidate=e=>{if(e.candidate){noteCandidate(diag,'local',e.candidate);adminApi('p2p/admin-signal',{pairId,signal:{candidate:e.candidate}}).catch(()=>{});}};
+  pc.onicecandidateerror=()=>{diag.iceErrors++;};
+  const fail=()=>{if(peers.has(pairId))closePeer(pairId,'failed',true,iceDiagnostics(pc,diag));};
+  pc.onconnectionstatechange=()=>{if(pc.connectionState==='failed')fail();};
+  pc.oniceconnectionstatechange=()=>{if(pc.iceConnectionState==='failed')fail();};
   const offer=await pc.createOffer();await pc.setLocalDescription(offer);await adminApi('p2p/admin-signal',{pairId,signal:{description:pc.localDescription}});
  }
  async function poll(g){
@@ -131,9 +143,9 @@ export function createAdminAssetDonor(adminApi,onState=()=>{},onStats=()=>{}){
    const r=await adminApi('p2p/admin-poll',{stats});if(!r.enabled){stop(false);onState('Chia sẻ băng thông đã dừng.',false);return;}
    for(const event of r.events||[]){
     if(event.type==='connect')await createPeer(event.pairId,g);
-    else if(event.type==='signal'){const peer=peers.get(event.pairId);if(!peer)continue;const s=event.signal;if(s.description){await peer.pc.setRemoteDescription(s.description);for(const candidate of peer.pendingCandidates.splice(0))try{await peer.pc.addIceCandidate(candidate);}catch{}}else if(s.candidate){if(peer.pc.remoteDescription)try{await peer.pc.addIceCandidate(s.candidate);}catch{}else peer.pendingCandidates.push(s.candidate);}}
+    else if(event.type==='signal'){const peer=peers.get(event.pairId);if(!peer)continue;const s=event.signal;if(s.description){await peer.pc.setRemoteDescription(s.description);for(const candidate of peer.pendingCandidates.splice(0))try{await peer.pc.addIceCandidate(candidate);}catch{}}else if(s.candidate){noteCandidate(peer.diag,'remote',s.candidate);if(peer.pc.remoteDescription)try{await peer.pc.addIceCandidate(s.candidate);}catch{}else peer.pendingCandidates.push(s.candidate);}}
    }
-   remoteStats={pairs:r.stats?.pairs||0,connected:r.stats?.connected||0,handshaking:r.stats?.handshaking||0,maxClients:r.stats?.maxClients||0,connectionsOpened:r.stats?.connectionsOpened||0,connectionFailures:r.stats?.connectionFailures||0};onStats({...stats,...remoteStats,savedBytes:Math.max(0,stats.servedBytes-stats.originBytes)});
+   remoteStats={...remoteStats,pairs:r.stats?.pairs||0,connected:r.stats?.connected||0,handshaking:r.stats?.handshaking||0,maxClients:r.stats?.maxClients||0,connectionsOpened:r.stats?.connectionsOpened||0,connectionFailures:r.stats?.connectionFailures||0,lastFailure:r.stats?.lastFailure||remoteStats.lastFailure};onStats({...stats,...remoteStats,savedBytes:Math.max(0,stats.servedBytes-stats.originBytes)});
   }catch(error){if(running)onState('P2P đang nối lại: '+error.message,true);}
   finally{if(running&&g===generation)timer=setTimeout(()=>poll(g),25);}
  }
@@ -147,5 +159,5 @@ export function createAdminAssetDonor(adminApi,onState=()=>{},onStats=()=>{}){
   }
   onState('Cache P2P sẵn sàng · '+done+' file'+(misses?' · tải mới '+misses:' · không cần tải mới'),running);return {done,misses};
  }
- return {async start(){if(running)return;if(typeof RTCPeerConnection==='undefined'){onState('Trình duyệt không hỗ trợ WebRTC.',false);return;}running=true;generation++;const g=generation;try{const r=await adminApi('p2p/admin-register',{enabled:true});if(!r.enabled)throw Error('Không bật được P2P');onState('Đang chia sẻ băng thông P2P · chờ người chơi…',true);poll(g);}catch(e){running=false;onState(e.message,false);}},stop,preload,getStats:()=>({...stats,savedBytes:Math.max(0,stats.servedBytes-stats.originBytes)})};
+ return {async start(){if(running)return;if(typeof RTCPeerConnection==='undefined'){onState('Trình duyệt không hỗ trợ WebRTC.',false);return;}running=true;generation++;const g=generation;try{const ice=await getIceConfig();remoteStats.turnConfigured=ice.turnConfigured===true;remoteStats.turnMode=ice.mode||'none';onStats({...stats,...remoteStats,savedBytes:Math.max(0,stats.servedBytes-stats.originBytes)});const r=await adminApi('p2p/admin-register',{enabled:true});if(!r.enabled)throw Error('Không bật được P2P');onState('Đang chia sẻ băng thông P2P · chờ người chơi…',true);poll(g);}catch(e){running=false;onState(e.message,false);}},stop,preload,getStats:()=>({...stats,savedBytes:Math.max(0,stats.servedBytes-stats.originBytes)})};
 }

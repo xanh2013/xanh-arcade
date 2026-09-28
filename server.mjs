@@ -11,7 +11,7 @@ import {gzip,brotliCompress,constants as zlibConstants} from 'node:zlib';
 import {promisify} from 'node:util';
 const gzipAsync=promisify(gzip),brotliAsync=promisify(brotliCompress);
 const staticCache=new Map();
-import {randomUUID,randomBytes,createHash} from 'node:crypto';
+import {randomUUID,randomBytes,createHash,createHmac} from 'node:crypto';
 const port=Number(process.env.PORT)||8000, sessions=new Map(), rooms=new Map(), limits=new Map(),p2pRates=new Map();
 const files={'/so-do':['so-do.svg','image/svg+xml'],'/so-do.svg':['so-do.svg','image/svg+xml'],'/':['index.html','text/html; charset=utf-8'],'/app.js':['app.js','text/javascript; charset=utf-8'],'/style.css':['style.css','text/css; charset=utf-8'],'/favicon.svg':['favicon.svg','image/svg+xml']};
 for(const game of ['runner','blocks','caro','chess']) files['/cover-'+game+'-v2.webp']=['cover-'+game+'-v2.webp','image/webp'];
@@ -33,6 +33,16 @@ files['/online.css']=['online.css','text/css; charset=utf-8'];for(const [path,fi
 const P2P_ASSET=/^\/(?:fortnite-assets\/[A-Za-z0-9_-]+\.(?:svg|json)|cover-(?:runner|blocks|caro|chess)-v2\.webp|background-(?:runner|space)-v2\.webp)$/;
 let p2pManifestPromise=null;
 function assetManifest(){return p2pManifestPromise??=Promise.all(Object.entries(files).filter(([path])=>P2P_ASSET.test(path)).map(async([path,[file,type]])=>{const raw=await readFile(new URL(file,import.meta.url));return [path,{sha256:createHash('sha256').update(raw).digest('base64url'),bytes:raw.length,type}];})).then(entries=>({version:(process.env.RENDER_GIT_COMMIT||'dev').slice(0,12),assets:Object.fromEntries(entries)}));}
+function p2pIceConfig(){
+ const iceServers=[{urls:['stun:stun.l.google.com:19302','stun:stun1.l.google.com:19302']}],raw=String(process.env.P2P_TURN_URLS||'').trim(),urls=raw?raw.split(/[;,\s]+/).filter(Boolean):[];
+ let turnConfigured=false,mode='none';
+ if(urls.length){
+  const secret=process.env.P2P_TURN_SECRET,staticUser=process.env.P2P_TURN_USERNAME,staticCredential=process.env.P2P_TURN_CREDENTIAL;
+  if(secret){const username=String(Math.floor(Date.now()/1000)+3600)+':xanh',credential=createHmac('sha1',secret).update(username).digest('base64');iceServers.push({urls,username,credential});turnConfigured=true;mode='ephemeral';}
+  else if(staticUser&&staticCredential){iceServers.push({urls,username:String(staticUser),credential:String(staticCredential)});turnConfigured=true;mode='static';}
+ }
+ return {iceServers,turnConfigured,mode};
+}
 function allowP2P(id,op){const now=Date.now(),key=id+':'+op,limit=op==='client-poll'?180:120;let r=p2pRates.get(key);if(!r||now-r.at>60000){r={at:now,n:0};p2pRates.set(key,r);}return ++r.n<=limit;}
 const games=new Set(['caro','chess','runner','blocks']);
 function send(res,status,data){res.writeHead(status,{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store'});res.end(JSON.stringify(data));}
@@ -45,7 +55,7 @@ const server=http.createServer(async(req,res)=>{try{
 res.setHeader('X-Content-Type-Options','nosniff');res.setHeader('Referrer-Policy','same-origin');res.setHeader('X-Frame-Options','DENY');res.setHeader('Cross-Origin-Resource-Policy','same-origin');res.setHeader('Permissions-Policy','camera=(), microphone=(), geolocation=(), payment=()');res.setHeader('Content-Security-Policy',"default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: blob:; connect-src 'self'; worker-src 'self'; manifest-src 'self'; object-src 'none'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'");
 const path=new URL(req.url,'http://localhost').pathname;
 if(req.method==='GET'&&files[path]){const [file,type]=files[path];let cached=staticCache.get(file);if(!cached){const raw=await readFile(new URL(file,import.meta.url));cached={raw,gzip:null,gzipPromise:null,br:null,brPromise:null,compressible:/text|json|svg|javascript|manifest/.test(type)&&raw.length>1024,etag:'"'+createHash('sha1').update(raw).digest('base64url')+'"'};staticCache.set(file,cached);}const accept=req.headers['accept-encoding']||'',wantsBr=cached.compressible&&/\bbr\b/.test(accept),wantsGzip=cached.compressible&&/\bgzip\b/.test(accept);const common={'Cache-Control':'no-cache','ETag':cached.etag,'Vary':'Accept-Encoding'};if(req.headers['if-none-match']===cached.etag){res.writeHead(304,common);res.end();return;}let body=cached.raw,encoding='';if(wantsBr){if(!cached.br){cached.brPromise??=brotliAsync(cached.raw,{params:{[zlibConstants.BROTLI_PARAM_QUALITY]:5}}).then(value=>cached.br=value).finally(()=>cached.brPromise=null);await cached.brPromise;}body=cached.br;encoding='br';}else if(wantsGzip){if(!cached.gzip){cached.gzipPromise??=gzipAsync(cached.raw).then(value=>cached.gzip=value).finally(()=>cached.gzipPromise=null);await cached.gzipPromise;}body=cached.gzip;encoding='gzip';}res.writeHead(200,{'Content-Type':type,...common,...(encoding?{'Content-Encoding':encoding}:{})});res.end(body);return;}
-if(path==='/health'){send(res,200,{ok:true,version:'2.7.1-beta',build:(process.env.RENDER_GIT_COMMIT||'local').slice(0,12),branch:process.env.RENDER_GIT_BRANCH||'local',uptimeSec:Math.floor(process.uptime()),p2p:p2p.publicState(),resource:shooter.diagnostics()});return;}
+if(path==='/health'){send(res,200,{ok:true,version:'2.7.2-beta',build:(process.env.RENDER_GIT_COMMIT||'local').slice(0,12),branch:process.env.RENDER_GIT_BRANCH||'local',uptimeSec:Math.floor(process.uptime()),p2p:p2p.publicState(),resource:shooter.diagnostics()});return;}
 if(!path.startsWith('/api/')){send(res,404,{error:'Không tìm thấy trang.'});return;}
 if(req.method==='POST'&&(!req.headers.origin||new URL(req.headers.origin).host!==req.headers.host)){send(res,403,{error:'Yêu cầu không hợp lệ.'});return;}
 if(/^\/api\/(auth|shop)\//.test(path)){
@@ -69,7 +79,8 @@ if(path.startsWith('/api/p2p/')){
  let d;try{d=JSON.parse(raw||'{}');}catch{send(res,400,{error:'JSON không hợp lệ.'});return;}
  if(!d||typeof d!=='object'||Array.isArray(d)){send(res,400,{error:'Dữ liệu không hợp lệ.'});return;}
  try{
-  if(op==='manifest')send(res,200,await assetManifest());
+  if(op==='ice')send(res,200,p2pIceConfig());
+  else if(op==='manifest')send(res,200,await assetManifest());
   else if(op==='client-connect')send(res,200,p2p.connect(s.id));
   else if(op==='client-poll')send(res,200,await p2p.clientWait(s.id,d,1200));
   else if(op==='client-signal')send(res,200,p2p.signal('client',s.id,d));
