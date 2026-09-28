@@ -56,7 +56,7 @@ export function createAssetP2PBroker({now=Date.now,pairTtlMs=30000,maxClients=8,
   cleanup();const p=pairs.get(pairId);if(!p)return {ok:false};
   if(role==='admin'&&p.adminId!==sessionId)return {ok:false};
   if(role==='client'&&p.clientId!==sessionId)return {ok:false};
-  const cleanDiag=value=>{if(!value||typeof value!=='object')return null;const count=x=>Math.max(0,Math.min(64,Math.floor(Number(x)||0))),cand=v=>({host:count(v?.host),srflx:count(v?.srflx),relay:count(v?.relay),other:count(v?.other)});return {iceState:String(value.iceState||'').slice(0,24),connectionState:String(value.connectionState||'').slice(0,24),local:cand(value.local),remote:cand(value.remote),turnConfigured:value.turnConfigured===true};};
+  const cleanDiag=value=>{if(!value||typeof value!=='object')return null;const count=x=>Math.max(0,Math.min(64,Math.floor(Number(x)||0))),cand=v=>({host:count(v?.host),srflx:count(v?.srflx),relay:count(v?.relay),other:count(v?.other)});return {iceState:String(value.iceState||'').slice(0,24),connectionState:String(value.connectionState||'').slice(0,24),iceErrors:count(value.iceErrors),local:cand(value.local),remote:cand(value.remote),turnConfigured:value.turnConfigured===true};};
   const diag=cleanDiag(diagnostics);if(diag)p.diagnostics[role]=diag;
   const next=['handshaking','open','failed','closed'].includes(state)?state:'handshaking';const previous=p.state;p.state=next;p.last=now();
   if(next==='open'&&!p.openedAt){p.openedAt=p.last;stats.connectionsOpened++;}
