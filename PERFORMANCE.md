@@ -121,3 +121,12 @@ Dùng median để quan sát xu hướng; không coi một run CI là FPS thiế
 - ICE candidates received before remote SDP are queued rather than discarded.
 - Open DataChannels are no longer expired by the handshake TTL.
 - Client signaling uses long-polling to reduce Render request overhead.
+
+
+## P2P ICE root-cause diagnostics · v2.7.2
+
+- Both Admin and client count local/remote ICE candidate types (host, srflx, relay) and ICE server errors without storing IP addresses, SDP or raw candidate strings.
+- The Admin dashboard explains the most likely root cause after a failed handshake: STUN/UDP blocked, one side missing a public candidate, restrictive NAT/CGNAT, TURN missing, or TURN configured without relay candidates.
+- ICE configuration is delivered by the server. Direct STUN remains preferred.
+- Optional TURN is configured only through environment variables. P2P_TURN_SECRET generates one-hour HMAC credentials; static username/credential is supported as a fallback.
+- TURN should be hosted outside Render so relay traffic does not consume the Render bandwidth quota.
