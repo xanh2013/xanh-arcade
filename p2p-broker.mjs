@@ -8,7 +8,7 @@ export function createAssetP2PBroker({now=Date.now,pairTtlMs=30000,maxClients=8,
  function cleanup(){
   const t=now();
   if(adminId&&t-adminSeen>45000){adminId=null;for(const wake of [...adminWaiters])wake();}
-  for(const [id,p] of pairs)if(t-p.last>pairTtlMs||!adminId||p.adminId!==adminId)pairs.delete(id);
+  for(const [id,p] of pairs)if((p.state!=='open'&&t-p.last>pairTtlMs)||!adminId||p.adminId!==adminId)pairs.delete(id);
  }
  function adminRegister(sessionId,enabled=true){
   cleanup();
@@ -50,7 +50,7 @@ export function createAssetP2PBroker({now=Date.now,pairTtlMs=30000,maxClients=8,
   if(role==='admin'&&p.adminId!==sessionId)return {ok:false};
   if(role==='client'&&p.clientId!==sessionId)return {ok:false};
   const next=['handshaking','open','failed','closed'].includes(state)?state:'handshaking';const previous=p.state;p.state=next;p.last=now();if(next==='open'&&!p.openedAt){p.openedAt=p.last;stats.connectionsOpened++;}if(next==='failed'&&previous!=='open')stats.connectionFailures++;
-  if(next==='failed'||next==='closed')pairs.delete(pairId);
+  if(next==='failed'||next==='closed')pairs.delete(pairId);for(const wake of [...adminWaiters])wake();
   return {ok:true,state:next};
  }
  function disconnect(role,sessionId,{pairId}={}){
