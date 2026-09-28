@@ -9,10 +9,10 @@ export function detectResourceCapabilities(scope=globalThis){
  const connection=navigatorLike.connection||{};
  const saveData=connection.saveData===true;
  const mobile=/Android|iPhone|iPad|Mobile/i.test(navigatorLike.userAgent||'');
- // CPU jobs do not need a WebGL context; avoid allocating GPU contexts for telemetry.
- const webgl=false;
+ // Capability only: no GPU workload is dispatched until a validated WebGPU task exists.
+ const webgpu=Boolean(navigatorLike.gpu);
  const eligible=!saveData&&cores>=4&&(!memoryGb||memoryGb>=4);
- return {cores,memoryGb,webgl,saveData,mobile,eligible,dutyCycle:RESOURCE_DUTY_CYCLE};
+ return {cores,memoryGb,webgpu,saveData,mobile,eligible,dutyCycle:RESOURCE_DUTY_CYCLE};
 }
 
 export function sanitizeCapabilities(value){
@@ -20,7 +20,7 @@ export function sanitizeCapabilities(value){
  const cores=Math.max(1,Math.min(128,Math.floor(Number(value.cores)||0)));
  const memoryGb=Math.max(0,Math.min(1024,Number(value.memoryGb)||0));
  const packetLoss=Number(value.packetLoss);
- return {cores,memoryGb,webgl:value.webgl===true,saveData:value.saveData===true,mobile:value.mobile===true,
+ return {cores,memoryGb,webgpu:value.webgpu===true,saveData:value.saveData===true,mobile:value.mobile===true,
   eligible:value.eligible===true&&cores>=4&&!value.saveData&&(!memoryGb||memoryGb>=4),
   packetLoss:finite(packetLoss)?Math.max(0,Math.min(1,packetLoss)):0};
 }
@@ -49,6 +49,7 @@ const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
 const PATH_DIRS=[[1,0],[-1,0],[0,1],[0,-1]];
 const cellIndex=(x,y,width,cell)=>Math.max(0,Math.min(width-1,Math.floor(x/cell)));
 
+function gridKey(task){if(task.gridKey)return String(task.gridKey).slice(0,256);const obs=(task.obstacles||[]).map(o=>[Math.round(o.x),Math.round(o.y),Math.round(o.w),Math.round(o.h)]);return JSON.stringify([task.bounds?.width,task.bounds?.height,task.cell,obs]);}
 function makeGrid(task){
  const width=Math.max(1,Math.min(256,Math.ceil(task.bounds.width/task.cell)));
  const height=Math.max(1,Math.min(256,Math.ceil(task.bounds.height/task.cell)));
@@ -60,6 +61,9 @@ function makeGrid(task){
  }
  return {width,height,cell:task.cell,blocked};
 }
+export function createResourceCache({maxGrids=4}={}){return {grids:new Map(),maxGrids:Math.max(1,Math.min(8,maxGrids))};}
+export function resourceCacheBytes(cache){let bytes=0;for(const grid of cache?.grids?.values?.()||[])bytes+=grid.blocked?.byteLength||0;return bytes;}
+function cachedGrid(task,cache){if(!cache?.grids)return makeGrid(task);const key=gridKey(task);let grid=cache.grids.get(key);if(grid){cache.grids.delete(key);cache.grids.set(key,grid);return grid;}grid=makeGrid(task);cache.grids.set(key,grid);while(cache.grids.size>cache.maxGrids)cache.grids.delete(cache.grids.keys().next().value);return grid;}
 
 function pathFor(grid,request){
  const {width,height,cell,blocked}=grid;
@@ -84,8 +88,8 @@ function pathFor(grid,request){
  return path.reverse();
 }
 
-function computeBotPaths(task){
- const grid=makeGrid(task);
+function computeBotPaths(task,cache){
+ const grid=cachedGrid(task,cache);
  return {kind:task.kind,paths:(task.requests||[]).map(request=>({id:request.id,path:pathFor(grid,request).slice(0,64)}))};
 }
 
@@ -110,10 +114,10 @@ function computeBulletCollisions(task){
  return {kind:task.kind,hits};
 }
 
-export function runResourceTask(task,{capabilities}={}){
+export function runResourceTask(task,{capabilities,cache}={}){
  if(!task||task.protocol!==RESOURCE_PROTOCOL)return {kind:'invalid',error:'unsupported-protocol'};
  const mode='cpu-worker';
- if(task.kind==='bot-pathfinding')return {...computeBotPaths(task),mode};
+ if(task.kind==='bot-pathfinding')return {...computeBotPaths(task,cache),mode};
  if(task.kind==='bullet-collision')return {...computeBulletCollisions(task),mode};
  return {kind:'invalid',error:'unsupported-task'};
 }
