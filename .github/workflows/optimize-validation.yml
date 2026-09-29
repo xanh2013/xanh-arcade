@@ -2,7 +2,7 @@ name: Optimize validation
 
 on:
   push:
-    branches: ['optimize-*','resource-sharing-*','resource-diagnostics-*','p2p-ice-diagnostics-*']
+    branches: ['optimize-*','resource-sharing-*','resource-diagnostics-*','p2p-ice-diagnostics-*','admin-management-*']
   pull_request:
     branches: [main]
 
