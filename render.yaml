@@ -1,0 +1,14 @@
+services:
+  - type: web
+    name: xanh-arcade
+    runtime: node
+    plan: free
+    buildCommand: npm ci --omit=dev
+    startCommand: npm run render:start
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: MEMORY_LIMIT_MB
+        value: "512"
