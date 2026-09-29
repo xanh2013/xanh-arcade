@@ -6,3 +6,5 @@
 .donor-panel{background:#202d28;border:1px solid #637459;border-radius:10px;padding:18px;margin:16px 0}.donor-panel p,.donor-panel small{line-height:1.65}.donor-panel button{margin:5px}.donor-panel small{display:block;color:#bfcbc0}#share-chart{max-width:100%;height:auto}
 
 @media (prefers-reduced-motion: reduce){*,*::before,*::after{scroll-behavior:auto!important;animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}}
+
+#admin-users-wrap{overflow:auto;margin-top:.7rem}#admin-users-table{width:100%;min-width:680px;border-collapse:collapse;font-size:.84rem}#admin-users-table th,#admin-users-table td{padding:.5rem .45rem;text-align:left;border-bottom:1px solid rgba(127,127,127,.28);vertical-align:middle}#admin-users-table td:first-child{font-weight:650}#admin-users-table .admin-badge{display:inline-block;padding:.15rem .4rem;border:1px solid #8a8a52;border-radius:999px;font-size:.74rem}.admin-manager button{margin:4px 4px 4px 0}
