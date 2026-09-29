@@ -130,4 +130,90 @@ create function public.xa_daily() returns jsonb language sql security invoker se
 create function public.xa_rename(p_nickname text) returns jsonb language sql security invoker set search_path='' as $$select arcade_private.rename(p_nickname);$$;
 revoke all on function public.xa_account(),public.xa_purchase(text),public.xa_equip(text,text),public.xa_daily(),public.xa_rename(text) from public,anon;
 grant execute on function public.xa_account(),public.xa_purchase(text),public.xa_equip(text,text),public.xa_daily(),public.xa_rename(text) to authenticated;
+
+
+-- Dynamic Admin registry. Existing app_metadata role=admin users become protected root admins.
+create table arcade_private.xa_admins(
+ user_id uuid primary key references auth.users(id) on delete cascade,
+ granted_by uuid references auth.users(id) on delete set null,
+ protected boolean not null default false,
+ created_at timestamptz not null default now()
+);
+create table arcade_private.xa_admin_audit(
+ id bigint generated always as identity primary key,
+ actor_id uuid references auth.users(id) on delete set null,
+ target_id uuid references auth.users(id) on delete set null,
+ action text not null check(action in ('grant','revoke')),
+ created_at timestamptz not null default now()
+);
+revoke all on table arcade_private.xa_admins,arcade_private.xa_admin_audit from anon,authenticated;
+insert into arcade_private.xa_admins(user_id,granted_by,protected)
+ select id,id,true from auth.users where coalesce(raw_app_meta_data->>'role','')='admin'
+ on conflict(user_id) do update set protected=arcade_private.xa_admins.protected or excluded.protected;
+
+create function arcade_private.is_admin(p_user uuid) returns boolean
+ language sql stable security definer set search_path='' as $$
+ select p_user is not null and exists(select 1 from arcade_private.xa_admins where user_id=p_user);
+$$;
+create function arcade_private.require_admin() returns uuid
+ language plpgsql security definer set search_path='' as $$
+declare u uuid:=auth.uid();
+begin
+ if u is null or not arcade_private.is_admin(u) then raise exception 'ADMIN_REQUIRED'; end if;
+ return u;
+end; $$;
+create function arcade_private.admin_directory() returns jsonb
+ language plpgsql security definer set search_path='' as $$
+declare actor uuid:=arcade_private.require_admin(); result jsonb;
+begin
+ select coalesce(jsonb_agg(jsonb_build_object(
+  'userId',u.id,'email',u.email,
+  'nickname',coalesce(p.nickname,u.raw_user_meta_data->>'nickname','Người chơi'),
+  'isAdmin',a.user_id is not null,'protected',coalesce(a.protected,false),
+  'isSelf',u.id=actor,'confirmed',u.email_confirmed_at is not null,'createdAt',u.created_at
+ ) order by (a.user_id is not null) desc,lower(coalesce(p.nickname,u.raw_user_meta_data->>'nickname','')),lower(coalesce(u.email,''))),'[]'::jsonb)
+ into result
+ from auth.users u
+ left join public.xa_profiles p on p.user_id=u.id
+ left join arcade_private.xa_admins a on a.user_id=u.id
+ where u.deleted_at is null;
+ return result;
+end; $$;
+create function arcade_private.admin_grant(p_user_id uuid) returns jsonb
+ language plpgsql security definer set search_path='' as $$
+declare actor uuid:=arcade_private.require_admin(); target_confirmed boolean;
+begin
+ select email_confirmed_at is not null into target_confirmed from auth.users where id=p_user_id and deleted_at is null;
+ if not found then raise exception 'ADMIN_USER_NOT_FOUND'; end if;
+ if not target_confirmed then raise exception 'ADMIN_USER_UNCONFIRMED'; end if;
+ if not exists(select 1 from arcade_private.xa_admins where user_id=p_user_id) then
+  insert into arcade_private.xa_admins(user_id,granted_by,protected) values(p_user_id,actor,false);
+  insert into arcade_private.xa_admin_audit(actor_id,target_id,action) values(actor,p_user_id,'grant');
+ end if;
+ return arcade_private.admin_directory();
+end; $$;
+create function arcade_private.admin_revoke(p_user_id uuid) returns jsonb
+ language plpgsql security definer set search_path='' as $$
+declare actor uuid:=arcade_private.require_admin(); target_protected boolean;
+begin
+ lock table arcade_private.xa_admins in exclusive mode;
+ if p_user_id=actor then raise exception 'SELF_ADMIN_REVOKE_DENIED'; end if;
+ select protected into target_protected from arcade_private.xa_admins where user_id=p_user_id;
+ if not found then raise exception 'NOT_ADMIN'; end if;
+ if target_protected then raise exception 'PROTECTED_ADMIN'; end if;
+ if (select count(*) from arcade_private.xa_admins)<=1 then raise exception 'LAST_ADMIN_REQUIRED'; end if;
+ delete from arcade_private.xa_admins where user_id=p_user_id;
+ insert into arcade_private.xa_admin_audit(actor_id,target_id,action) values(actor,p_user_id,'revoke');
+ return arcade_private.admin_directory();
+end; $$;
+revoke all on function arcade_private.is_admin(uuid),arcade_private.require_admin(),arcade_private.admin_directory(),arcade_private.admin_grant(uuid),arcade_private.admin_revoke(uuid) from public,anon,authenticated;
+grant execute on function arcade_private.is_admin(uuid),arcade_private.admin_directory(),arcade_private.admin_grant(uuid),arcade_private.admin_revoke(uuid) to authenticated;
+
+create function public.xa_is_admin() returns boolean language sql security invoker set search_path='' as $$select arcade_private.is_admin(auth.uid());$$;
+create function public.xa_admin_directory() returns jsonb language sql security invoker set search_path='' as $$select arcade_private.admin_directory();$$;
+create function public.xa_admin_grant(p_user_id uuid) returns jsonb language sql security invoker set search_path='' as $$select arcade_private.admin_grant(p_user_id);$$;
+create function public.xa_admin_revoke(p_user_id uuid) returns jsonb language sql security invoker set search_path='' as $$select arcade_private.admin_revoke(p_user_id);$$;
+revoke all on function public.xa_is_admin(),public.xa_admin_directory(),public.xa_admin_grant(uuid),public.xa_admin_revoke(uuid) from public,anon;
+grant execute on function public.xa_is_admin(),public.xa_admin_directory(),public.xa_admin_grant(uuid),public.xa_admin_revoke(uuid) to authenticated;
+
 commit;
