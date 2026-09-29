@@ -2,7 +2,7 @@ import {secureCookies} from './runtime-config.mjs';
 import {catalog} from './shop-catalog.js';
 import {createHash} from 'node:crypto';
 export class AccountError extends Error{constructor(status,message){super(message);this.status=status;}}
-const friendly={NOT_ENOUGH_COINS:'Chưa đủ xu. Nhận quà hằng ngày để tích thêm nhé.',ITEM_NOT_FOUND:'Vật phẩm không tồn tại.',ITEM_NOT_OWNED:'Bạn chưa sở hữu vật phẩm này.',INVALID_SLOT:'Loại trang bị không hợp lệ.',DAILY_ALREADY_CLAIMED:'Bạn đã nhận quà hôm nay. Quà mới mở lúc 07:00 giờ Việt Nam.',INVALID_NICKNAME:'Biệt danh cần từ 3 đến 24 ký tự.',AUTH_REQUIRED:'Bạn cần đăng nhập.'};
+const friendly={NOT_ENOUGH_COINS:'Chưa đủ xu. Nhận quà hằng ngày để tích thêm nhé.',ITEM_NOT_FOUND:'Vật phẩm không tồn tại.',ITEM_NOT_OWNED:'Bạn chưa sở hữu vật phẩm này.',INVALID_SLOT:'Loại trang bị không hợp lệ.',DAILY_ALREADY_CLAIMED:'Bạn đã nhận quà hôm nay. Quà mới mở lúc 07:00 giờ Việt Nam.',INVALID_NICKNAME:'Biệt danh cần từ 3 đến 24 ký tự.',AUTH_REQUIRED:'Bạn cần đăng nhập.',ADMIN_REQUIRED:'Chỉ tài khoản Admin được dùng chức năng này.',ADMIN_USER_NOT_FOUND:'Không tìm thấy tài khoản này.',ADMIN_USER_UNCONFIRMED:'Tài khoản phải xác nhận email trước khi cấp Admin.',SELF_ADMIN_REVOKE_DENIED:'Không thể tự thu hồi quyền Admin của chính mình.',PROTECTED_ADMIN:'Admin gốc được bảo vệ và không thể bị thu hồi quyền.',LAST_ADMIN_REQUIRED:'Hệ thống phải còn ít nhất một Admin.',NOT_ADMIN:'Tài khoản này hiện không phải Admin.'};
 function cookie(req,name){try{return decodeURIComponent(new RegExp('(?:^|;\\s*)'+name+'=([^;]+)').exec(req.headers.cookie||'')?.[1]||'');}catch{return '';}}
 function email(value){if(typeof value!=='string'||value.length>254||!/^\S+@[^\s@]+\.[^\s@]+$/.test(value.trim()))throw new AccountError(400,'Nhập email hợp lệ nhé.');return value.trim().toLowerCase();}
 function nickname(value){if(typeof value!=='string')throw new AccountError(400,friendly.INVALID_NICKNAME);const n=value.trim().replace(/[\x00-\x1f\x7f]/g,'');if(n.length<3||n.length>24)throw new AccountError(400,friendly.INVALID_NICKNAME);return n;}
@@ -22,7 +22,8 @@ export function createAccounts({url=process.env.SUPABASE_URL,key=process.env.SUP
   const refresh=cookie(req,'xa_refresh');if(!refresh)throw new AccountError(401,friendly.AUTH_REQUIRED);
   try{const id=createHash('sha256').update(refresh).digest('hex');let pending=refreshes.get(id);if(!pending){pending=remote('/auth/v1/token?grant_type=refresh_token',{data:{refresh_token:refresh}});refreshes.set(id,pending);pending.finally(()=>{const timer=setTimeout(()=>refreshes.delete(id),10000);timer.unref?.();}).catch(()=>{});}const tokens=await pending;if(!tokens.access_token||!tokens.refresh_token)throw new AccountError(401,friendly.AUTH_REQUIRED);cookies(res,tokens);token=tokens.access_token;return {token,user:await remote('/auth/v1/user',{method:'GET',token})};}catch(e){if(e.status===400||e.status===401||e.status===403){cookies(res,null);throw new AccountError(401,'Phiên đã hết hạn. Đăng nhập lại nhé.');}throw e;}
  }
- async function account(ctx){const profile=await remote('/rest/v1/rpc/xa_account',{token:ctx.token,data:{}});return {...profile,email:ctx.user.email,role:ctx.user.app_metadata?.role==='admin'?'admin':'player'};}
+ async function isAdmin(ctx){return (await remote('/rest/v1/rpc/xa_is_admin',{token:ctx.token,data:{}}))===true;}
+ async function account(ctx){const [profile,admin]=await Promise.all([remote('/rest/v1/rpc/xa_account',{token:ctx.token,data:{}}),isAdmin(ctx)]);return {...profile,email:ctx.user.email,role:admin?'admin':'player'};}
  async function handle(path,data,req,res){
   if(path==='shop/catalog'){if(!configured)return {configured:false,catalog};return {configured:true,catalog:await remote('/rest/v1/xa_catalog?select=id,slot,name,description,price,variant&order=price.asc',{method:'GET'})};}
   if(!configured){if(path==='auth/me')return {configured:false,account:null};throw new AccountError(503,'Tính năng tài khoản đang chờ kết nối. Bạn vẫn có thể chơi game và xem shop.');}
@@ -46,13 +47,23 @@ export function createAccounts({url=process.env.SUPABASE_URL,key=process.env.SUP
   }
   let ctx;try{ctx=await context(req,res);}catch(e){if(path==='auth/me'&&e.status===401)return {configured:true,account:null};throw e;}
   if(path==='auth/me')return {configured:true,account:await account(ctx)};
+  if(path==='admin/list'){
+   if(!ctx.user.email_confirmed_at||!await isAdmin(ctx))throw new AccountError(403,friendly.ADMIN_REQUIRED);
+   return {users:await remote('/rest/v1/rpc/xa_admin_directory',{token:ctx.token,data:{}})};
+  }
+  if(path==='admin/grant'||path==='admin/revoke'){
+   if(!ctx.user.email_confirmed_at||!await isAdmin(ctx))throw new AccountError(403,friendly.ADMIN_REQUIRED);
+   const id=String(data.userId||'');if(!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id))throw new AccountError(400,'Tài khoản không hợp lệ.');
+   const rpc=path==='admin/grant'?'xa_admin_grant':'xa_admin_revoke';
+   return {users:await remote('/rest/v1/rpc/'+rpc,{token:ctx.token,data:{p_user_id:id}})};
+  }
   const procedures={'shop/buy':['xa_purchase',{p_item_id:data.itemId}],'shop/equip':['xa_equip',{p_item_id:data.itemId??null,p_slot:data.slot}],'shop/daily':['xa_daily',{}],'auth/profile':['xa_rename',{p_nickname:path==='auth/profile'?nickname(data.nickname):''}]};
   const proc=procedures[path];if(!proc)throw new AccountError(404,'Không tìm thấy thao tác.');
   if(path==='shop/buy'&&(typeof data.itemId!=='string'||data.itemId.length>60))throw new AccountError(400,'Vật phẩm không hợp lệ.');
   if(path==='shop/equip'&&(!['runner','paddle','board','avatar','battle'].includes(data.slot)||(data.itemId!==null&&(typeof data.itemId!=='string'||data.itemId.length>60))))throw new AccountError(400,'Trang bị không hợp lệ.');
   const profile=await remote('/rest/v1/rpc/'+proc[0],{token:ctx.token,data:proc[1]});return {configured:true,account:{...profile,email:ctx.user.email}};
  }
- async function requireAdmin(req,res){if(!configured)throw new AccountError(503,'Tài khoản chưa kết nối.');const ctx=await context(req,res);if(!ctx.user.email_confirmed_at||ctx.user.app_metadata?.role!=='admin')throw new AccountError(403,'Chỉ tài khoản admin được dùng chức năng này.');return ctx.user.id;}
+ async function requireAdmin(req,res){if(!configured)throw new AccountError(503,'Tài khoản chưa kết nối.');const ctx=await context(req,res);if(!ctx.user.email_confirmed_at||!await isAdmin(ctx))throw new AccountError(403,friendly.ADMIN_REQUIRED);return ctx.user.id;}
  return {configured,handle,requireAdmin};
 }
 
